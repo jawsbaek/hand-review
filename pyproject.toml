@@ -1,6 +1,10 @@
 [project]
 name = "poker-play-analyzer"
 version = "0.1.0"
+description = "Poker hand history analyzer: VPIP/PFR/3-bet, bb/100, all-in EV, ICM, MTT ROI, with a terminal UI"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "jawsbaek", email = "bshjaws1@gmail.com" }]
 requires-python = ">=3.12"
 dependencies = [
     "pokerkit==0.7.6",
@@ -18,3 +22,9 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::UserWarning:pokerkit.*"]
+
+[project.urls]
+Repository = "https://github.com/jawsbaek/poker-play-analyzer"
