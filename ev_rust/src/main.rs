@@ -23,6 +23,28 @@ fn name(a: &Action, pot: i32) -> String {
     }
 }
 
+/// 정확히 같은 이름, 없으면 같은 종류(BET/RAISE) 중 %가 가장 가까운 액션.
+/// ponytail: 실제 핸드의 사이즈가 트리에 없을 때의 근사 매핑. ev_engine.nearest_action과 같은 규칙.
+fn nearest(names: &[String], want: &str) -> Option<usize> {
+    if let Some(i) = names.iter().position(|n| n == want) {
+        return Some(i);
+    }
+    let (kind, pct) = want.split_once(' ')?;
+    let pct: f64 = pct.parse().ok()?;
+    names
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| {
+            let (k, p) = n.split_once(' ')?;
+            if k != kind {
+                return None;
+            }
+            Some((i, (p.parse::<f64>().ok()? - pct).abs()))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(i, _)| i)
+}
+
 fn pot_now(game: &PostFlopGame) -> i32 {
     let [a, b] = game.total_bet_amount();
     game.tree_config().starting_pot + a + b
@@ -112,11 +134,8 @@ fn main() {
             continue;
         }
         let pot = pot_now(&game);
-        let idx = game
-            .available_actions()
-            .iter()
-            .position(|a| name(a, pot) == step)
-            .unwrap_or_else(|| panic!("action {step} not available"));
+        let names: Vec<String> = game.available_actions().iter().map(|a| name(a, pot)).collect();
+        let idx = nearest(&names, step).unwrap_or_else(|| panic!("action {step} not available in {names:?}"));
         game.play(idx);
     }
     assert!(

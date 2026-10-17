@@ -75,6 +75,22 @@ uv run python -m hand_review.solver   # self-check: solves a small flop spot
 Set `HAND_REVIEW_SOLVER_DIR` to install or look for the solver elsewhere. On Apple Silicon the macOS build runs under Rosetta (`softwareupdate --install-rosetta`).
 `ranges.py` converts PioSOLVER-style `hand,weight` CSV ranges into TexasSolver range strings.
 
+### Turn/river EV scoring (optional, AGPL)
+
+Scores each heads-up turn and river decision whose hole cards are known as
+`EV(best action) - EV(chosen action)`, using real per-action EVs from
+[postflop-solver](https://github.com/b-inary/postflop-solver). Mixed equilibrium actions cost 0.
+The flop is not scored.
+
+```sh
+cargo build --release --manifest-path ev_rust/Cargo.toml   # needs a Rust toolchain
+uv run hand-review hands samples/ev --oop-range "KK,77,22,54s,65s" --ip-range "QQ,JJ"
+```
+
+Ranges are a range string or a CSV path. They are fixed per OOP/IP and not narrowed by earlier
+actions, so treat the numbers as a rough guide. Off-tree bet sizes map to the nearest size in the
+solver tree. To use a binary elsewhere, set `HAND_REVIEW_EV_BIN`. Without the build, `hand-review` works as usual and the EV tests are skipped.
+
 ## How it works
 
 | File | Role |
@@ -83,6 +99,8 @@ Set `HAND_REVIEW_SOLVER_DIR` to install or look for the solver elsewhere. On App
 | `src/hand_review/tui.py` | Textual app showing the same results in tabs |
 | `src/hand_review/solver.py` | Runs TexasSolver as a subprocess and returns its strategy tree |
 | `src/hand_review/ranges.py` | Range CSV → solver range string |
+| `src/hand_review/ev_engine.py` | Runs `ev_rust` (subprocess, JSON) and returns per-action EVs |
+| `ev_rust/` | Rust CLI on postflop-solver: solve a spot, print EVs at a node (AGPL-3.0) |
 | `scripts/capture.py` | Renders TUI screens to `captures/*.svg` + `.txt` for review |
 | `scripts/setup_solver.sh` | Downloads and verifies TexasSolver |
 
@@ -110,3 +128,7 @@ uv run pytest
 MIT, see [LICENSE](LICENSE).
 
 Dependencies: PokerKit (MIT), Textual (MIT). TexasSolver is AGPL-3.0; it is **not** included in this repository. `setup_solver.sh` downloads it separately and `solver.py` only runs it as an external program.
+
+`ev_rust/` is the one exception: it links postflop-solver (AGPL-3.0-or-later), so that directory is
+licensed AGPL-3.0-or-later ([ev_rust/LICENSE](ev_rust/LICENSE)). The rest of the repository stays MIT;
+`src/hand_review/ev_engine.py` only runs the built binary as a separate process and exchanges JSON.

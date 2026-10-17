@@ -20,6 +20,9 @@ from pathlib import Path
 
 from pokerkit import Deck, HandHistory, PokerStarsParser, StandardHighHand, calculate_equities, rake
 
+from hand_review import ev_engine
+from hand_review.ranges import load_range_csv
+
 warnings.filterwarnings("ignore", module="pokerkit")
 
 
@@ -37,6 +40,8 @@ class Stats:
     pfr: int = 0
     threebet: int = 0
     threebet_opp: int = 0
+    decisions: int = 0  # 솔버로 채점한 턴·리버 결정 수 (EV 채점 켰을 때만)
+    ev_loss_bb: float = 0.0  # 그 결정들의 EV loss 합: EV(최선 액션) - EV(실제 액션)
 
 
 def load_hands(path):
@@ -122,13 +127,51 @@ def reveal_shown_cards(hh):
     ]
 
 
-def analyze_hand(hh, stats, samples=5000, executor=None):
+def action_name(op, amount, to_call, all_in_amount, pot):
+    """pokerkit 액션 → ev_rust 액션 이름. BET/RAISE는 '현재 팟 대비 %'(ev_rust 표기와 동일)."""
+    if op == "f":
+        return "FOLD"
+    if op == "cc":
+        return "CALL" if to_call else "CHECK"
+    if amount >= all_in_amount:
+        return "ALLIN"
+    return f"{'RAISE' if to_call else 'BET'} {round(100 * amount / pot)}"
+
+
+def score_decision(street, actor, combo, name, ev_ranges):
+    """솔버 EV로 결정 하나 채점: (EV loss bb) 또는 채점 불가면 None."""
+    # ponytail: 트리 사이즈는 33/75% + 이 스트리트에서 실제로 나온 벳 %, 레이즈는 3x 하나 — 실제 레이즈
+    # 사이즈는 가장 가까운 RAISE로 근사. 결정마다 스트리트를 새로 풂(턴 수 초) → 느려지면 노드 여러 개를 한 번에 조회
+    path = street["path"]
+    sizes = {33, 75} | {int(n.split()[1]) for n in [*path, name] if n.startswith("BET ")}
+    try:
+        r = ev_engine.solve_node(
+            street["board"],
+            *ev_ranges,
+            street["pot_bb"],
+            street["eff_bb"],
+            "oop" if actor == street["oop"] else "ip",
+            combo,
+            path=path,
+            bet_sizes=",".join(f"{x}%" for x in sorted(sizes)),
+            raise_sizes="3x",
+        )
+    except RuntimeError:  # 레인지 밖 콤보, 트리 메모리 초과 등
+        return None
+    chosen = ev_engine.nearest_action(name, r["actions"])
+    return None if chosen is None else max(r["evs"]) - r["ev"][chosen]
+
+
+def analyze_hand(hh, stats, samples=5000, executor=None, ev_ranges=None):
+    """ev_ranges=(oop 레인지, ip 레인지)를 주면 턴·리버 헤즈업 결정을 솔버 EV로 채점."""
     reveal_shown_cards(hh)
     names = hh.players or [f"p{i + 1}" for i in range(len(hh.starting_stacks))]
     bb = float(max(hh.blinds_or_straddles))
     start = [float(s) for s in hh.starting_stacks]
     vpip, pfr, tb, tb_opp = set(), set(), set(), set()
     raises, preflop, ev, to_call = 0, True, None, 0
+    street, loss, decisions = None, defaultdict(float), defaultdict(int)
+    pot_prev, all_in_prev, holes_prev = 0.0, [0.0] * len(start), [[] for _ in start]
 
     for state, action in hh.state_actions:
         parts = action.split() if action else []
@@ -146,11 +189,26 @@ def analyze_hand(hh, stats, samples=5000, executor=None):
                 raises += 1
             elif op == "cc" and to_call:
                 vpip.add(i)
+        if ev_ranges and parts[:2] == ["d", "db"]:
+            street = _start_street(state, bb)
+        elif street and parts and parts[0].startswith("p") and parts[1] in ("f", "cc", "cbr"):
+            i, op = int(parts[0][1:]) - 1, parts[1]
+            street["oop"] = street["oop"] if street["oop"] is not None else i  # 스트리트 첫 액터 = OOP
+            name = action_name(op, float(parts[2]) if op == "cbr" else 0, to_call, all_in_prev[i], pot_prev)
+            if holes_prev[i] and not any(c.unknown_status for c in holes_prev[i]):
+                combo = "".join(repr(c) for c in holes_prev[i])
+                if (x := score_decision(street, i, combo, name, ev_ranges)) is not None:
+                    loss[i] += x
+                    decisions[i] += 1
+            street["path"].append(name)
         if ev is None and state.status:
             if (pot_ev := allin_ev(state, samples, executor)) is not None:
                 ev = {i: pot_ev[i] - (start[i] - float(state.stacks[i])) for i in range(len(start))}
         # state는 같은 객체가 변경되며 재사용되므로 다음 액션용 콜 금액을 값으로 저장
         to_call = state.checking_or_calling_amount if state.actor_index is not None else 0
+        pot_prev = float(state.total_pot_amount)  # 칩 단위(벳 %는 비율이라 bb 변환 불필요)
+        all_in_prev = [float(b + s) for b, s in zip(state.bets, state.stacks, strict=True)]
+        holes_prev = [list(h) for h in state.hole_cards]  # 폴드하면 카드가 사라지므로 액션 전 값
     if state.status:  # 기록이 중간에 끊긴 핸드: 진행 중 스택을 손익으로 세면 안 됨
         raise ValueError("hand not finished")
 
@@ -164,6 +222,24 @@ def analyze_hand(hh, stats, samples=5000, executor=None):
         s.pfr += i in pfr
         s.threebet += i in tb
         s.threebet_opp += i in tb_opp
+        s.decisions += decisions[i]
+        s.ev_loss_bb += loss[i]
+
+
+def _start_street(state, bb):
+    """턴·리버가 막 깔린 시점, 칩이 남은 두 명만 있으면 채점할 스트리트 정보. 아니면 None."""
+    board = [repr(c) for c in state.get_board_cards(0)]
+    active = [i for i, on in enumerate(state.statuses) if on]
+    # ponytail: 플랍은 채점 안 함(결정), 멀티웨이는 솔버가 헤즈업 전용
+    if len(board) < 4 or len(active) != 2 or any(state.stacks[i] <= 0 for i in active):
+        return None
+    return {
+        "board": board,
+        "pot_bb": float(state.total_pot_amount) / bb,
+        "eff_bb": min(float(state.stacks[i]) for i in active) / bb,
+        "oop": None,
+        "path": [],
+    }
 
 
 def icm(stacks, payouts):
@@ -191,8 +267,8 @@ def pct(a, b):
 HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet")
 
 
-def compute_hand_rows(path, hero, samples):
-    """(행 목록, 건너뛴 핸드 수, 중복 핸드 수)."""
+def collect_stats(path, samples, ev_ranges=None):
+    """(플레이어별 Stats, 건너뛴 핸드 수, 중복 핸드 수)."""
     stats = defaultdict(Stats)
     seen, skipped, dups = set(), 0, 0
     with ProcessPoolExecutor() as executor:  # 올인 equity 몬테카를로 병렬화
@@ -206,9 +282,13 @@ def compute_hand_rows(path, hero, samples):
                 continue
             seen.add(key)
             try:
-                analyze_hand(hh, stats, samples, executor)
+                analyze_hand(hh, stats, samples, executor, ev_ranges)
             except ValueError:
                 skipped += 1
+    return stats, skipped, dups
+
+
+def hand_rows(stats, hero):
     rows = [(n, s) for n, s in stats.items() if not hero or n == hero]
     rows.sort(key=lambda r: -r[1].hands)
     rows = [
@@ -224,14 +304,27 @@ def compute_hand_rows(path, hero, samples):
         )
         for n, s in rows
     ]
-    return rows, skipped, dups
+    return rows
 
 
-def report_hands(path, hero, samples):
-    rows, skipped, dups = compute_hand_rows(path, hero, samples)
+def compute_hand_rows(path, hero, samples):
+    """(행 목록, 건너뛴 핸드 수, 중복 핸드 수)."""
+    stats, skipped, dups = collect_stats(path, samples)
+    return hand_rows(stats, hero), skipped, dups
+
+
+def report_hands(path, hero, samples, ev_ranges=None):
+    stats, skipped, dups = collect_stats(path, samples, ev_ranges)
+    rows = hand_rows(stats, hero)
     print(f"{'player':<16}{'hands':>6}{'net bb':>9}{'bb/100':>10}{'EV bb/100':>11}{'VPIP':>6}{'PFR':>6}{'3Bet':>6}")
     for n, hands, net, bb100, ev100, vpip, pfr, tb in rows[:20]:
         print(f"{n:<16}{hands:>6}{net:>9.1f}{bb100:>10.1f}{ev100:>11.1f}{vpip:>6}{pfr:>6}{tb:>6}")
+    if ev_ranges:
+        print("\n턴·리버 결정 EV loss (솔버 기준, 헤즈업 팟, 카드를 아는 결정만)")
+        print(f"{'player':<16}{'결정':>6}{'loss bb':>10}{'bb/결정':>10}")
+        for n, s in sorted(stats.items(), key=lambda r: -r[1].decisions):
+            if s.decisions and (not hero or n == hero):
+                print(f"{n:<16}{s.decisions:>6}{s.ev_loss_bb:>10.2f}{s.ev_loss_bb / s.decisions:>10.2f}")
     if skipped or dups:
         print(f"\n건너뜀: 읽기 실패/미지원/미완료 {skipped}개, 중복 {dups}개")
 
@@ -270,6 +363,8 @@ def main():
     h.add_argument("path", type=Path)
     h.add_argument("--hero")
     h.add_argument("--samples", type=int, default=5000)
+    h.add_argument("--oop-range", help="턴·리버 EV 채점용 OOP 레인지 (문자열 'AA,KQs:0.5' 또는 CSV 경로)")
+    h.add_argument("--ip-range", help="턴·리버 EV 채점용 IP 레인지 (문자열 또는 CSV 경로)")
     i = sub.add_parser("icm")
     i.add_argument("--stacks", type=float, nargs="+", required=True)
     i.add_argument("--payouts", type=float, nargs="+", required=True)
@@ -288,7 +383,15 @@ def main():
             ap.error(f"경로 없음: {p}")
 
     if a.cmd == "hands":
-        report_hands(a.path, a.hero, a.samples)
+        ev_ranges = None
+        if a.oop_range or a.ip_range:
+            if not (a.oop_range and a.ip_range):
+                ap.error("EV 채점: --oop-range와 --ip-range를 함께 지정해야 함")
+            if not ev_engine.available():
+                ap.error("EV 채점 엔진 없음: cargo build --release --manifest-path ev_rust/Cargo.toml")
+            # ponytail: 레인지는 OOP/IP 고정, 프리플랍·플랍 액션으로 좁히지 않음 — 결과는 거친 근사
+            ev_ranges = tuple(load_range_csv(r) if Path(r).is_file() else r for r in (a.oop_range, a.ip_range))
+        report_hands(a.path, a.hero, a.samples, ev_ranges)
     elif a.cmd == "icm":
         total = sum(a.stacks)
         for n, (s, e) in enumerate(zip(a.stacks, icm(a.stacks, a.payouts), strict=True), 1):

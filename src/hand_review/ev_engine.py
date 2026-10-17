@@ -1,4 +1,7 @@
-"""postflop-solver(Rust) 기반 액션별 EV PoC.
+"""postflop-solver(Rust, ev_rust/) 기반 액션별 EV 엔진 — 선택 기능.
+
+ev_rust/는 AGPL-3.0-or-later(postflop-solver 파생물). 이 파일은 그 바이너리를 별도 프로세스로
+실행하고 JSON만 주고받으므로 MIT로 남는다. 바이너리가 없으면 available()이 False.
 
 EV 정의 (postflop-solver expected_values_detail 그대로):
   EV(a) = 해당 노드 이후 hero 스택의 기대 변화량 + 이미 팟에 있던 칩 중 hero가 가져가는 몫.
@@ -11,11 +14,13 @@ EV 정의 (postflop-solver expected_values_detail 그대로):
 """
 
 import json
+import os
 import subprocess
-import time
 from pathlib import Path
 
-BIN = Path(__file__).parent / "ev_rust" / "target" / "release" / "ev_rust"
+# 레포 루트의 ev_rust/에서 빌드한 바이너리. 다른 위치(설치형 실행 등)는 HAND_REVIEW_EV_BIN으로 지정
+_REPO_BIN = Path(__file__).parents[2] / "ev_rust" / "target" / "release" / "ev_rust"
+BIN = Path(os.environ.get("HAND_REVIEW_EV_BIN", _REPO_BIN))
 # ponytail: 솔버가 i32 칩만 받으므로 100배 스케일 (0.01 단위 해상도), 소수 bb 더 필요하면 키울 것
 SCALE = 100
 
@@ -76,68 +81,16 @@ def action_evs(
     return r["ev"]
 
 
-if __name__ == "__main__":
-    spot = dict(
-        board=["Ks", "7d", "2c", "3h", "9s"],
-        oop_range="KK,77,22,54s,65s",
-        ip_range="QQ,JJ",
-        pot=10,
-        eff_stack=10,
-        bet_size_pct=100,
-    )
-    # 허용오차: 목표 exploitability = 팟의 0.1% (0.01) -> 무차별 액션 간 EV 차 < 0.05 (팟 0.5%)로 체크
-    TOL = 0.05
+def available():
+    return BIN.exists()
 
-    t = time.perf_counter()
-    air = solve_node(hero="oop", hero_combo="5s4s", **spot)
-    river_ms = (time.perf_counter() - t) * 1000
-    print(
-        "air 5s4s:",
-        air["actions"],
-        air["evs"],
-        "strat",
-        air["strategy"],
-        f"expl={air['exploitability']:.4f} solve={air['solve_ms']:.0f}ms wall={river_ms:.0f}ms",
-    )
-    ev = air["ev"]
-    bet = next(k for k in ev if k != "CHECK")  # 100% 팟 = 스택이라 "BET 100" 또는 "ALLIN"
-    # 1. 혼합 콤보는 무차별
-    assert 0.05 < air["strategy"][1] < 0.95, "air should mix"
-    assert abs(ev["CHECK"] - ev[bet]) < TOL, ev
-    # 3. 쇼다운 가치 0인 에어의 체크 EV = 0 (체크백되면 지고, 베팅 받으면 폴드 -> 회수 0)
-    assert abs(ev["CHECK"]) < 1e-6, ev
 
-    kk = action_evs(hero="oop", hero_combo="KcKd", **spot)
-    print("value KcKd:", kk)
-    # 2. 밸류는 베팅 >= 체크
-    assert kk[bet] >= kk["CHECK"] - 1e-6, kk
-
-    ip = solve_node(hero="ip", hero_combo="QhQd", path=[bet], **spot)
-    print("IP QhQd vs bet:", ip["ev"], "strat", ip["strategy"])
-    ipev = ip["ev"]
-    # 4. 블러프캐처 콜/폴드 무차별 (FOLD = 0 정의)
-    assert ipev["FOLD"] == 0.0 and abs(ipev["CALL"] - ipev["FOLD"]) < TOL, ipev
-
-    # 실전 플랍: 100bb SRP (BTN open vs BB call, 팟 5.5bb, 스택 97.5bb)
-    # 플랍 33%/75%, 턴 66%, 리버 75%, 레이즈 3x -> 트리 4.7GiB (전 스트리트 33/75 + 2.5x면 27GiB)
-    t = time.perf_counter()
-    flop = solve_node(
-        board=["Qs", "Jh", "2d"],
-        oop_range="QQ-22,AQs-A2s,K9s+,Q9s+,J9s+,T8s+,97s+,86s+,75s+,64s+,54s,ATo+,KTo+,QTo+,JTo",
-        ip_range="22+,A2s+,K5s+,Q8s+,J8s+,T7s+,96s+,86s+,75s+,64s+,54s,A8o+,KTo+,QTo+,JTo",
-        pot=5.5,
-        eff_stack=97.5,
-        hero="oop",
-        hero_combo="AhKd",
-        bet_sizes="33%,75%",
-        turn_bet_sizes="66%",
-        river_bet_sizes="75%",
-        raise_sizes="3x",
-        target_expl_pct=0.5,
-    )
-    print(f"flop AhKd: {flop['ev']} strat {flop['strategy']}")
-    print(
-        f"flop solve={flop['solve_ms'] / 1000:.1f}s wall={time.perf_counter() - t:.1f}s "
-        f"mem={flop['mem_bytes'] / 2**30:.2f}GiB expl={flop['exploitability']:.4f}bb"
-    )
-    print("OK")
+def nearest_action(want, names):
+    """정확히 같은 이름, 없으면 같은 종류(BET/RAISE) 중 %가 가장 가까운 액션. ev_rust의 nearest와 같은 규칙."""
+    if want in names:
+        return want
+    kind, _, pct = want.partition(" ")
+    if not pct:
+        return None
+    same = [n for n in names if n.startswith(kind + " ")]
+    return min(same, key=lambda n: abs(float(n.partition(" ")[2]) - float(pct)), default=None)
