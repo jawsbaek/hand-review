@@ -4,7 +4,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
 
-HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet")
+HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet", "F2R")
 SIGNED_COLUMNS = {"net bb", "bb/100", "EV bb/100"}  # 손익 컬럼: 양수 초록 / 음수 빨강
 
 

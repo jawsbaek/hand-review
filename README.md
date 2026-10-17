@@ -7,7 +7,7 @@
 
 A small command-line analyzer for your own online poker hand histories, built on [PokerKit](https://github.com/uoftcprg/pokerkit).
 
-- **Preflop stats**: VPIP, PFR, 3-bet
+- **Preflop stats**: VPIP, PFR, 3-bet; postflop fold-to-raise (F2R)
 - **Results**: net bb, bb/100, and **all-in EV bb/100** (luck removed using equity at the moment players are all in)
 - **ICM**: Malmuth-Harville chip-to-prize equity
 - **Tournament ROI / ITM** from a simple CSV
@@ -37,10 +37,10 @@ uv run hand-review hands samples/cash
 ```
 
 ```
-player           hands   net bb    bb/100  EV bb/100  VPIP   PFR  3Bet
-Hero                 2    107.8    5390.0     3539.4 100.0 100.0     -
-Villain1             1     -0.5     -50.0      -50.0   0.0   0.0   0.0
-Villain2             1   -100.0  -10000.0    -6298.8 100.0 100.0 100.0
+player           hands   net bb    bb/100  EV bb/100  VPIP   PFR  3Bet   F2R
+Hero                 2    107.8    5390.0     3539.4 100.0 100.0     -     -
+Villain1             1     -0.5     -50.0      -50.0   0.0   0.0   0.0     -
+Villain2             1   -100.0  -10000.0    -6298.8 100.0 100.0 100.0     -
 ...
 ```
 
@@ -100,6 +100,7 @@ solver tree. To use a binary elsewhere, set `HAND_REVIEW_EV_BIN`. Without the bu
 | `src/hand_review/solver.py` | Runs TexasSolver as a subprocess and returns its strategy tree |
 | `src/hand_review/ranges.py` | Range CSV → solver range string |
 | `src/hand_review/ev_engine.py` | Runs `ev_rust` (subprocess, JSON) and returns per-action EVs |
+| `src/hand_review/exploit.py`, `best_response.py` | Library (not wired into the CLI yet): blends a GTO strategy with an opponent's F2R read, capped by the EV you'd lose if the read is wrong |
 | `ev_rust/` | Rust CLI on postflop-solver: solve a spot, print EVs at a node (AGPL-3.0) |
 | `scripts/capture.py` | Renders TUI screens to `captures/*.svg` + `.txt` for review |
 | `scripts/setup_solver.sh` | Downloads and verifies TexasSolver |

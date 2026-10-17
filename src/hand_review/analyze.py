@@ -40,6 +40,8 @@ class Stats:
     pfr: int = 0
     threebet: int = 0
     threebet_opp: int = 0
+    raise_faced: int = 0  # 포스트플랍에서 벳/레이즈를 맞은 횟수 (exploit.py 상대 모델링 입력)
+    folded_to_raise: int = 0
     decisions: int = 0  # 솔버로 채점한 턴·리버 결정 수 (EV 채점 켰을 때만)
     ev_loss_bb: float = 0.0  # 그 결정들의 EV loss 합: EV(최선 액션) - EV(실제 액션)
 
@@ -169,12 +171,17 @@ def analyze_hand(hh, stats, samples=5000, executor=None, ev_ranges=None):
     bb = float(max(hh.blinds_or_straddles))
     start = [float(s) for s in hh.starting_stacks]
     vpip, pfr, tb, tb_opp = set(), set(), set(), set()
+    raise_faced, folded_to_raise = defaultdict(int), defaultdict(int)
     raises, preflop, ev, to_call = 0, True, None, 0
     street, loss, decisions = None, defaultdict(float), defaultdict(int)
     pot_prev, all_in_prev, holes_prev = 0.0, [0.0] * len(start), [[] for _ in start]
 
     for state, action in hh.state_actions:
         parts = action.split() if action else []
+        if not preflop and parts and parts[0].startswith("p") and to_call:
+            i = int(parts[0][1:]) - 1
+            raise_faced[i] += 1
+            folded_to_raise[i] += parts[1] == "f"
         if parts[:2] == ["d", "db"]:
             preflop = False
         elif preflop and parts and parts[0].startswith("p"):
@@ -222,6 +229,8 @@ def analyze_hand(hh, stats, samples=5000, executor=None, ev_ranges=None):
         s.pfr += i in pfr
         s.threebet += i in tb
         s.threebet_opp += i in tb_opp
+        s.raise_faced += raise_faced[i]
+        s.folded_to_raise += folded_to_raise[i]
         s.decisions += decisions[i]
         s.ev_loss_bb += loss[i]
 
@@ -264,7 +273,7 @@ def pct(a, b):
     return f"{100 * a / b:5.1f}" if b else "    -"
 
 
-HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet")
+HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet", "F2R")
 
 
 def collect_stats(path, samples, ev_ranges=None):
@@ -301,6 +310,7 @@ def hand_rows(stats, hero):
             pct(s.vpip, s.hands).strip(),
             pct(s.pfr, s.hands).strip(),
             pct(s.threebet, s.threebet_opp).strip(),
+            pct(s.folded_to_raise, s.raise_faced).strip(),
         )
         for n, s in rows
     ]
@@ -316,9 +326,12 @@ def compute_hand_rows(path, hero, samples):
 def report_hands(path, hero, samples, ev_ranges=None):
     stats, skipped, dups = collect_stats(path, samples, ev_ranges)
     rows = hand_rows(stats, hero)
-    print(f"{'player':<16}{'hands':>6}{'net bb':>9}{'bb/100':>10}{'EV bb/100':>11}{'VPIP':>6}{'PFR':>6}{'3Bet':>6}")
-    for n, hands, net, bb100, ev100, vpip, pfr, tb in rows[:20]:
-        print(f"{n:<16}{hands:>6}{net:>9.1f}{bb100:>10.1f}{ev100:>11.1f}{vpip:>6}{pfr:>6}{tb:>6}")
+    print(
+        f"{'player':<16}{'hands':>6}{'net bb':>9}{'bb/100':>10}{'EV bb/100':>11}"
+        f"{'VPIP':>6}{'PFR':>6}{'3Bet':>6}{'F2R':>6}"
+    )
+    for n, hands, net, bb100, ev100, vpip, pfr, tb, f2r in rows[:20]:
+        print(f"{n:<16}{hands:>6}{net:>9.1f}{bb100:>10.1f}{ev100:>11.1f}{vpip:>6}{pfr:>6}{tb:>6}{f2r:>6}")
     if ev_ranges:
         print("\n턴·리버 결정 EV loss (솔버 기준, 헤즈업 팟, 카드를 아는 결정만)")
         print(f"{'player':<16}{'결정':>6}{'loss bb':>10}{'bb/결정':>10}")

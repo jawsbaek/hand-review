@@ -4,7 +4,7 @@
 
 내 온라인 포커 핸드 히스토리를 분석하는 작은 CLI입니다. [PokerKit](https://github.com/uoftcprg/pokerkit) 기반.
 
-- **프리플랍 지표**: VPIP, PFR, 3Bet
+- **프리플랍 지표**: VPIP, PFR, 3Bet / 포스트플랍 벳·레이즈에 폴드율(F2R)
 - **성적**: net bb, bb/100, **올인 EV bb/100** (올인 시점 equity로 운을 걷어낸 손익)
 - **ICM**: Malmuth-Harville 칩 → 상금 기대값
 - **토너먼트 ROI / ITM** (CSV 입력)
@@ -88,6 +88,7 @@ uv run hand-review hands samples/ev --oop-range "KK,77,22,54s,65s" --ip-range "Q
 | `src/hand_review/solver.py` | TexasSolver를 서브프로세스로 실행해 전략 트리 반환 |
 | `src/hand_review/ranges.py` | 레인지 CSV → 솔버 레인지 문자열 |
 | `src/hand_review/ev_engine.py` | `ev_rust`를 실행(서브프로세스, JSON)해 액션별 EV 반환 |
+| `src/hand_review/exploit.py`, `best_response.py` | 라이브러리(아직 CLI 미연결): GTO 전략에 상대 F2R 읽기를 섞되, 읽기가 틀렸을 때 잃을 EV로 상한 |
 | `ev_rust/` | postflop-solver 기반 Rust CLI: 스팟을 풀고 노드의 EV 출력 (AGPL-3.0) |
 | `scripts/capture.py` | TUI 화면을 `captures/*.svg` + `.txt`로 저장(리뷰용) |
 | `scripts/setup_solver.sh` | TexasSolver 다운로드·검증 |
