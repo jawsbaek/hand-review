@@ -9,6 +9,7 @@
 - **ICM**: Malmuth-Harville 칩 → 상금 기대값
 - **토너먼트 ROI / ITM** (CSV 입력)
 - **터미널 UI**(Textual), 열 정렬 가능
+- **Pokerist 브라우저 복기**: 테이블 재생, 결정별 블런더·베스트 후보 필터, 먼저 선택하는 연습 모드
 - **GTO 솔버 래퍼(선택)**: [TexasSolver](https://github.com/bupticybee/TexasSolver)로 포스트플랍 스팟 계산
 
 > 세션이 끝난 뒤 자기 핸드를 복기하는 용도입니다. 실시간 플레이 보조 도구가 아니며, 플레이 중에 쓰지 마세요.
@@ -39,6 +40,7 @@ clone한 폴더에서는 앞에 `uv run`을 붙이세요.
 
 ```sh
 hand-review hands <파일|폴더> [--hero 이름] [--samples 5000]
+hand-review replay <Pokerist.jsonl|폴더> --output reports/replay.html
 hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
 hand-review mtt samples/mtt/tournaments.csv
 hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
@@ -52,7 +54,36 @@ hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 
 |---|---|
 | `.phh` / `.phhs` | [Poker Hand History](https://phh.readthedocs.io/). 좌석이 아니라 이름으로 묶이도록 `players`를 꼭 적으세요. |
 | PokerStars `.txt` | NL 홀덤 캐시·토너먼트. 레이크와 앤티 반영. |
+| Pokerist `.jsonl` | `replay` 전용. `kind: pokerist-hand`, `hero`, `board`, 프로토콜 `actions`를 담은 관측 기록. |
 | MTT CSV | 헤더 `date,name,buyin,prize`. `samples/mtt/tournaments.csv` 참고. |
+
+### Pokerist 브라우저 복기
+
+```sh
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html
+open reports/demo.html  # macOS; 다른 OS에서는 브라우저로 파일 열기
+```
+
+데모는 모두 합성 데이터입니다. 실제 세션은 본인의 로컬 JSONL 내보내기 파일을 지정하세요.
+생성된 HTML 한 파일에 데이터와 화면이 들어가며 인터넷 연결이나 서버가 필요 없습니다.
+실제 내보내기 파일과 복기 결과는 로컬에 두세요. 둘 다 gitignore에 포함하고 합성 샘플만 추적합니다.
+
+- 재생·일시 정지·한 단계 이동·타임라인 이동·스트리트 이동·다음 내 결정 이동. 자동 재생은 기본적으로 내 결정에서 멈춥니다.
+- 블런더·베스트 **후보** / 검토 / 미평가 필터. 한 핸드에 잘한 결정과 의심스러운 결정이 함께 있을 수 있습니다.
+- ‘먼저 선택하기’에서는 내 선택 후 실제 액션과 평가를 공개합니다. 이후에는 실제 기록을 재생하며 가상의 분기를 만들지 않습니다.
+- 결과는 기본적으로 숨깁니다. 미래 보드는 해당 스트리트에서, 상대 공개 카드는 마지막 장면에서만 보여줍니다.
+
+솔버 레인지를 명시하지 않으면 보수적인 **휴리스틱 후보** 분류입니다. GTO 최적해나 계산한 EV를 뜻하지 않습니다. 근거가 부족하면 미평가로 두고, 각 규칙과 한계를 화면에 설명합니다. Net은 기록의 핸드 경계 스택 차이이므로 충전 등이 섞일 수 있습니다. `GS_COLLECT_POT`은 배당으로 해석하지 않습니다. 시작 누락·베팅 모순·미완료·서로 다른 핸드의 기록 혼입은 경고합니다. 슈트 4는 `/s4` 표기를 유지하며 내부 계산의 `s`는 일관된 슈트 대응용 토큰일 뿐입니다.
+
+v0.3.0의 실제 솔버 EV 엔진도 고정 OOP/IP 레인지를 명시해 사용할 수 있습니다.
+
+```sh
+cargo build --release --manifest-path ev_rust/Cargo.toml
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/ev-demo.html \
+  --oop-range "KK,77,22,54s,65s" --ip-range "QQ,JJ"
+```
+
+위 레인지는 합성 헤즈업 샘플용이며 실제 상대의 레인지가 아닙니다. 기록이 완전한 헤즈업 턴·리버만 채점하고 플랍·멀티웨이는 휴리스틱 또는 미평가로 둡니다. 경로 미지원·계산당 45초 제한·메모리 1GiB 제한·수렴 부족은 솔버 등급을 부여하지 않고 표시합니다. 실제 사이즈는 가장 가까운 트리 액션에 대응합니다. EV 손실 2BB 이상은 블런더 후보, 0.1BB와 보고된 exploitability 두 배 중 큰 값 이내는 베스트 후보, 그 외 채점된 결정은 검토입니다.
 
 ### 솔버 (선택)
 
@@ -85,6 +116,9 @@ uv run hand-review hands samples/ev --oop-range "KK,77,22,54s,65s" --ip-range "Q
 |---|---|
 | `src/hand_review/analyze.py` | CLI(`hand-review`). 핸드 로딩, PokerKit으로 재생, 지표 집계, ICM, MTT ROI |
 | `src/hand_review/tui.py` | 같은 결과를 탭으로 보여주는 Textual 앱 |
+| `src/hand_review/pokerist.py` | Pokerist JSONL 검증 및 관측 상태 재구성 |
+| `src/hand_review/review.py` | 액션 직전 정보로 휴리스틱 후보 분류·선택적 실제 솔버 EV 비교 |
+| `src/hand_review/replay.py`, `replay.html` | 인터넷 연결 없이 여는 브라우저 복기 보고서 |
 | `src/hand_review/solver.py` | TexasSolver를 서브프로세스로 실행해 전략 트리 반환 |
 | `src/hand_review/ranges.py` | 레인지 CSV → 솔버 레인지 문자열 |
 | `src/hand_review/ev_engine.py` | `ev_rust`를 실행(서브프로세스, JSON)해 액션별 EV 반환 |
@@ -101,7 +135,7 @@ uv run hand-review hands samples/ev --oop-range "KK,77,22,54s,65s" --ip-range "Q
 - `players` 없는 PHH는 좌석(`p1`, `p2`…)으로 묶임.
 - 스트래들: 가장 큰 블라인드를 bb로 간주.
 - 캐시와 토너먼트를 한 폴더에 섞으면 bb 단위가 섞임. 폴더를 나누세요.
-- PokerStars 텍스트만 파싱. 다른 사이트(GG 등)는 파서 추가 필요.
+- 통계 분석은 PHH/PokerStars를 지원하고 Pokerist 관측 JSONL은 `replay`에서만 지원합니다. 다른 사이트(GG 등)는 파서 추가가 필요합니다.
 - ICM은 전수 계산이라 파이널 테이블(약 9명)까지만 실용적.
 
 ## 개발
@@ -110,6 +144,11 @@ uv run hand-review hands samples/ev --oop-range "KK,77,22,54s,65s" --ip-range "Q
 uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run pytest
+# 브라우저 회귀 검증 (Playwright는 개발 도구이며 실행 의존성은 아닙니다):
+npm install --no-save --no-package-lock playwright@1.58.1
+npx playwright install chromium
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html
+node scripts/verify_replay.mjs
 ```
 
 ## 라이선스

@@ -12,6 +12,7 @@ A small command-line analyzer for your own online poker hand histories, built on
 - **ICM**: Malmuth-Harville chip-to-prize equity
 - **Tournament ROI / ITM** from a simple CSV
 - **Terminal UI** (Textual) with sortable tables
+- **Pokerist replay**: an offline browser table, action playback, decision filters and practice mode
 - **Optional GTO solver wrapper** around [TexasSolver](https://github.com/bupticybee/TexasSolver) for postflop spots
 
 > For studying your own hands after the session. It is not a real-time assistant; do not use it while playing.
@@ -50,6 +51,7 @@ From a clone, prefix with `uv run`.
 
 ```sh
 hand-review hands <file|folder> [--hero NAME] [--samples 5000]
+hand-review replay <Pokerist.jsonl|folder> --output reports/replay.html
 hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
 hand-review mtt samples/mtt/tournaments.csv
 hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
@@ -63,7 +65,37 @@ hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 
 |---|---|
 | `.phh` / `.phhs` | [Poker Hand History](https://phh.readthedocs.io/) files. Include `players` so stats group by name, not seat. |
 | PokerStars `.txt` | No-limit Hold'em cash and tournaments. Rake and antes are applied. |
+| Pokerist `.jsonl` | `replay` command only. Observation exports with `kind: pokerist-hand`, `hero`, `board`, and protocol `actions`. |
 | MTT CSV | Header `date,name,buyin,prize`. See `samples/mtt/tournaments.csv`. |
+
+### Pokerist browser replay
+
+```sh
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html
+open reports/demo.html  # macOS; open the file with a browser on other platforms
+```
+
+The demo is entirely synthetic. Use your own local export instead to review a session.
+The generated HTML includes all its data and assets, works offline, and makes no external requests.
+Keep real exports and generated reports local; both are gitignored (only the synthetic sample is tracked).
+
+- Play, pause, step, scrub, jump to a street or the next hero decision; autoplay pauses at hero decisions by default.
+- Filter **blunder / best candidates**, review decisions or unscored decisions. One hand can contain both good and questionable actions.
+- Switch to practice mode to choose before seeing the recorded action and review. This compares choices and then resumes the real history; it does not simulate an alternative continuation.
+- Results stay hidden by default. Future board cards and opponent cards remain hidden until their replay point; exported opponent reveals appear only at the end.
+
+Without explicit solver ranges, classifications are conservative **heuristic candidates**, not GTO verdicts or invented EVs. Unsupported decisions remain unscored. The report describes each rule and its limits. Net is the exported stack-boundary difference and may include top-ups; pot collection events are never treated as payouts. Missing starts, contradictory payments, incomplete records and mixed hand boundaries are flagged. Suit 4 retains its original `/s4` display; its internal `s` solver token is only a consistent suit mapping.
+
+Optional real EV comparisons reuse the v0.3.0 engine with explicit, fixed OOP/IP ranges:
+
+```sh
+cargo build --release --manifest-path ev_rust/Cargo.toml
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/ev-demo.html \
+  --oop-range "KK,77,22,54s,65s" --ip-range "QQ,JJ"
+```
+
+These example ranges describe the synthetic heads-up sample, not your opponents.
+Only complete heads-up turn/river states are scored. Flop and multiway decisions retain their heuristic/unscored status. Unsupported paths, timeouts (45 seconds per replay solve), memory limits (1 GiB) and insufficient convergence are disclosed without assigning solver grades. Off-tree sizes use the nearest matching solver action. The replay labels a solver loss of at least 2 BB a blunder candidate; losses within the larger of 0.1 BB or twice the reported exploitability are best candidates; other scored decisions are marked for review.
 
 ### Solver (optional)
 
@@ -97,6 +129,9 @@ solver tree. To use a binary elsewhere, set `HAND_REVIEW_EV_BIN`. Without the bu
 |---|---|
 | `src/hand_review/analyze.py` | CLI (`hand-review`). Loads hands, replays them with PokerKit, aggregates stats, ICM, MTT ROI |
 | `src/hand_review/tui.py` | Textual app showing the same results in tabs |
+| `src/hand_review/pokerist.py` | Validates Pokerist JSONL and reconstructs observation snapshots |
+| `src/hand_review/review.py` | Pre-action heuristic candidates and optional real solver EV comparisons |
+| `src/hand_review/replay.py`, `replay.html` | Self-contained offline browser report and replay UI |
 | `src/hand_review/solver.py` | Runs TexasSolver as a subprocess and returns its strategy tree |
 | `src/hand_review/ranges.py` | Range CSV → solver range string |
 | `src/hand_review/ev_engine.py` | Runs `ev_rust` (subprocess, JSON) and returns per-action EVs |
@@ -113,7 +148,7 @@ Flow for `hands`: `load_hands` (PHH / PokerStars parser, with rake and ante fixe
 - PHH files without `players` are grouped by seat (`p1`, `p2`, ...).
 - Straddles: the largest blind is treated as the big blind.
 - Mixing cash and tournament hands in one folder mixes bb units. Keep them in separate folders.
-- Only PokerStars text format is parsed; other sites (GG, etc.) need a parser.
+- Statistical analysis accepts PHH/PokerStars; Pokerist observation JSONL is supported by `replay` only. Other sites (GG, etc.) need a parser.
 - ICM is exact enumeration, practical up to a final table (about 9 players).
 
 ## Development
@@ -122,6 +157,11 @@ Flow for `hands`: `load_hands` (PHH / PokerStars parser, with rake and ante fixe
 uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run pytest
+# Browser regression checks (Playwright is a development tool, not a runtime dependency):
+npm install --no-save --no-package-lock playwright@1.58.1
+npx playwright install chromium
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html
+node scripts/verify_replay.mjs
 ```
 
 ## License

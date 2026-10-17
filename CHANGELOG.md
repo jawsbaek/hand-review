@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/) (pre-1.0: interfaces may change).
 
+## [Unreleased]
+
+### Added
+- `hand-review replay`: Pokerist JSONL import and a standalone offline browser table with action/street playback, hero-decision pauses, blunder/best candidate filters, hidden results and practice mode.
+- Conservative pre-action review explanations and optional real heads-up turn/river solver EV comparisons using explicit ranges; unsupported or unreliable decisions remain unscored.
+- Synthetic Pokerist examples, import/accounting/boundary/solver regression tests and desktop/mobile browser checks in CI.
+
 ## [0.3.0] - 2026-10-17
 
 ### Added

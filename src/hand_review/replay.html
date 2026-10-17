@@ -1,0 +1,1824 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>hand-review · 나의 핸드 복기</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #183c33;
+        --muted: #4f665e;
+        --ground: #eef2f0;
+        --paper: #fff;
+        --line: #cdd8d2;
+        --green: #216549;
+        --felt: #21594b;
+        --deep: #143e34;
+        --best: #236b49;
+        --best-bg: #e5f3e9;
+        --blunder: #a32e38;
+        --blunder-bg: #fcebed;
+        --review: #80520e;
+        --review-bg: #fff1d5;
+        --radius: 14px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--ground);
+        color: var(--ink);
+        font:
+          14px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          "Apple SD Gothic Neo",
+          "Malgun Gothic",
+          sans-serif;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      button,
+      select,
+      summary {
+        cursor: pointer;
+      }
+      button {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--paper);
+        padding: 8px 12px;
+        font-weight: 600;
+        min-height: 40px;
+      }
+      button:hover {
+        background: #e6eee9;
+      }
+      button:disabled {
+        cursor: default;
+        opacity: 0.4;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid #b9811e;
+        outline-offset: 3px;
+      }
+      input,
+      select {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--paper);
+        padding: 7px 9px;
+        min-height: 38px;
+        max-width: 100%;
+      }
+      input[type="checkbox"] {
+        min-height: auto;
+        accent-color: var(--green);
+      }
+      input[type="range"] {
+        accent-color: var(--green);
+        padding: 0;
+        min-height: 24px;
+        width: 100%;
+      }
+      ::selection {
+        background: #cde3a9;
+        color: #183c33;
+      }
+      * {
+        scrollbar-color: #94aaa0 transparent;
+        scrollbar-width: thin;
+      }
+      a {
+        color: var(--green);
+        text-underline-offset: 3px;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 21px;
+        letter-spacing: -0.025em;
+      }
+      h2 {
+        font-size: 17px;
+        letter-spacing: -0.02em;
+      }
+      h3 {
+        font-size: 16px;
+      }
+      small,
+      .muted {
+        color: var(--muted);
+      }
+      .number {
+        font-variant-numeric: tabular-nums;
+      }
+      .topbar {
+        background: var(--deep);
+        color: #f6faf7;
+        padding: 17px 26px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 17px;
+      }
+      .brand p {
+        color: #bfd3ca;
+        font-size: 13px;
+      }
+      .topbar label {
+        color: #e0ece5;
+      }
+      .topbar select {
+        background: #214d40;
+        color: #fff;
+        border-color: #668f7c;
+      }
+      .settings {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        flex-wrap: wrap;
+      }
+      .setting {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .session-line {
+        padding: 13px 26px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        background: #f8faf9;
+        flex-wrap: wrap;
+      }
+      .session-line strong {
+        font-size: 15px;
+      }
+      .local-note {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .workspace {
+        max-width: 1720px;
+        margin: auto;
+        display: grid;
+        grid-template-columns: 254px minmax(410px, 1fr) 318px;
+        min-height: calc(100vh - 129px);
+      }
+      .library {
+        border-right: 1px solid var(--line);
+        padding: 22px 15px;
+        min-width: 0;
+      }
+      .library h2 {
+        padding: 0 5px;
+        margin-bottom: 13px;
+      }
+      .search {
+        width: 100%;
+        margin-top: 12px;
+      }
+      .filter-bar {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .filter-bar button {
+        font-size: 12px;
+        padding: 5px 9px;
+        min-height: 34px;
+        background: transparent;
+      }
+      .filter-bar button[aria-pressed="true"] {
+        background: var(--deep);
+        color: #fff;
+        border-color: var(--deep);
+      }
+      .list-caption {
+        display: flex;
+        justify-content: space-between;
+        margin: 16px 4px 7px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .hand-list {
+        max-height: calc(100vh - 330px);
+        min-height: 220px;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 3px;
+      }
+      .hand-row {
+        flex: none;
+        width: 100%;
+        text-align: left;
+        padding: 11px 10px;
+        border: 1px solid transparent;
+        background: transparent;
+        border-radius: 8px;
+        font-weight: 400;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 3px 8px;
+      }
+      .hand-row[aria-current="true"] {
+        background: #dbe9e0;
+        border-color: #8cae99;
+      }
+      .hand-row:hover {
+        background: #e0eae4;
+      }
+      .hand-row strong {
+        font-size: 15px;
+      }
+      .hand-row small {
+        font-size: 12px;
+      }
+      .hand-row .row-cards {
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: 0.025em;
+      }
+      .row-description {
+        grid-column: 1/-1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .empty {
+        padding: 25px 8px;
+        color: var(--muted);
+      }
+      .stage-panel {
+        padding: 22px 24px;
+        min-width: 0;
+      }
+      .hand-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .hand-heading h2 {
+        font-size: 23px;
+      }
+      .hand-heading p {
+        font-size: 12px;
+        margin-top: 3px;
+        color: var(--muted);
+      }
+      .result {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .result strong {
+        display: block;
+        font-size: 19px;
+        font-variant-numeric: tabular-nums;
+      }
+      .result small {
+        font-size: 12px;
+      }
+      .streets {
+        display: flex;
+        gap: 5px;
+        margin: 0 0 9px;
+      }
+      .streets button {
+        flex: 1;
+        background: transparent;
+        border-color: transparent;
+        padding: 6px 3px;
+        font-size: 12px;
+        min-height: 32px;
+      }
+      .streets button[aria-current="true"] {
+        background: #dbe9e0;
+        color: var(--deep);
+        border-color: #a9c3b3;
+      }
+      .table {
+        position: relative;
+        height: 468px;
+        isolation: isolate;
+      }
+      .felt {
+        position: absolute;
+        inset: 48px 30px 56px;
+        background: var(--felt);
+        border: 9px solid #3d7560;
+        border-radius: 46%;
+        box-shadow: 0 13px 25px -18px #173b32;
+      }
+      .felt::after {
+        content: "";
+        position: absolute;
+        inset: 12px;
+        border: 1px solid #6c9582;
+        border-radius: 46%;
+      }
+      .board-area {
+        position: absolute;
+        left: 50%;
+        top: 43%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        z-index: 2;
+        min-width: 220px;
+        color: #f3faf5;
+      }
+      .pot-label {
+        font-size: 12px;
+        color: #d0e2d7;
+      }
+      .pot {
+        font-size: 24px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        margin: 0 0 14px;
+      }
+      .board {
+        display: flex;
+        justify-content: center;
+        gap: 6px;
+        min-height: 58px;
+      }
+      .card {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 41px;
+        height: 57px;
+        border-radius: 5px;
+        background: #fff;
+        color: #172e28;
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1;
+        box-shadow: 0 2px 3px #102f2833;
+        gap: 2px;
+      }
+      .card.red {
+        color: #b3303b;
+      }
+      .card.unknown-suit {
+        font-size: 18px;
+      }
+      .card.unknown-suit span {
+        font-size: 0.6em;
+      }
+      .card.back {
+        background: #164336;
+        border: 1px solid #89a594;
+        box-shadow: none;
+        color: transparent;
+      }
+      .card.placeholder {
+        background: #164738;
+        border: 1px dashed #a4bcaf;
+        box-shadow: none;
+        color: transparent;
+      }
+      .seat {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        z-index: 3;
+        min-width: 76px;
+        text-align: center;
+        transition: opacity 0.18s;
+      }
+      .seat.folded .seat-body {
+        background: #e0e9e3;
+        color: #4a6257;
+      }
+      .seat-body {
+        padding: 5px 8px;
+        border-radius: 8px;
+        background: #f5f8f6;
+        min-width: 82px;
+        border: 1px solid #becfc3;
+      }
+      .seat.hero .seat-body {
+        background: #f5f8f6;
+        border: 2px solid #b48a32;
+        min-width: 110px;
+      }
+      .seat.active .seat-body {
+        outline: 3px solid #cfab5e;
+        outline-offset: 3px;
+      }
+      .seat-name {
+        font-size: 12px;
+        font-weight: 650;
+        max-width: 112px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .seat-position {
+        font-size: 10px;
+        color: #586c61;
+      }
+      .seat-stack {
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .seat-cards {
+        display: flex;
+        justify-content: center;
+        gap: 3px;
+        margin-top: 4px;
+      }
+      .seat-cards .card {
+        width: 24px;
+        height: 33px;
+        font-size: 17px;
+      }
+      .seat-cards .card.unknown-suit {
+        font-size: 13px;
+      }
+      .seat.hero .seat-cards .card {
+        width: 35px;
+        height: 47px;
+        font-size: 24px;
+      }
+      .seat.hero .seat-cards .card.unknown-suit {
+        font-size: 18px;
+      }
+      .seat-bet {
+        font-size: 10px;
+        background: #e6edba;
+        color: #2f4526;
+        border-radius: 4px;
+        margin: 3px auto 0;
+        padding: 1px 4px;
+        width: max-content;
+        font-variant-numeric: tabular-nums;
+      }
+      .dealer {
+        display: inline-block;
+        padding: 0 4px;
+        background: #f6e4b3;
+        color: #583f0d;
+        border-radius: 3px;
+        font-size: 9px;
+        margin-left: 4px;
+      }
+      .status-line {
+        min-height: 36px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 7px 0;
+      }
+      .controls {
+        border-top: 1px solid var(--line);
+        padding-top: 13px;
+      }
+      .transport {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 8px 0;
+      }
+      .transport-main {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .icon-button {
+        width: 40px;
+        padding: 8px;
+      }
+      .icon-button svg {
+        display: block;
+        width: 20px;
+        height: 20px;
+      }
+      .primary {
+        background: var(--green);
+        color: #fff;
+        border-color: var(--green);
+      }
+      .primary:hover {
+        background: #194c38;
+      }
+      .play {
+        width: 48px;
+      }
+      .jump {
+        font-size: 12px;
+        padding: 7px 9px;
+      }
+      .transport-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .transport-meta select {
+        font-size: 12px;
+        min-height: 30px;
+        padding: 2px 5px;
+      }
+      .progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 3px;
+      }
+      .inspector {
+        padding: 24px 22px;
+        border-left: 1px solid var(--line);
+        background: #f8faf9;
+        min-width: 0;
+      }
+      .inspector h2 {
+        margin-bottom: 18px;
+      }
+      .decision-box {
+        min-height: 230px;
+      }
+      .decision-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 11px;
+      }
+      .decision-street {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 4px;
+        padding: 3px 7px;
+        font-size: 12px;
+        font-weight: 700;
+        width: max-content;
+        background: #e6ece8;
+        color: #496155;
+      }
+      .badge.best {
+        background: var(--best-bg);
+        color: var(--best);
+      }
+      .badge.blunder {
+        background: var(--blunder-bg);
+        color: var(--blunder);
+      }
+      .badge.review {
+        background: var(--review-bg);
+        color: var(--review);
+      }
+      .basis {
+        display: block;
+        margin: 5px 0 13px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .decision-copy {
+        font-size: 13px;
+        line-height: 1.75;
+        margin: 10px 0;
+      }
+      .recommendation {
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .spot {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
+        margin: 17px 0;
+      }
+      .spot dt {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .spot dd {
+        font-size: 15px;
+        font-weight: 650;
+        margin: 2px 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .practice-buttons {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin: 14px 0;
+      }
+      .practice-buttons button {
+        flex: 1;
+        min-width: 70px;
+      }
+      .training-note {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 10px;
+      }
+      .ev-table {
+        width: 100%;
+        font-size: 12px;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .ev-table td,
+      .ev-table th {
+        text-align: right;
+        padding: 5px 2px;
+        border-bottom: 1px solid var(--line);
+      }
+      .ev-table td:first-child,
+      .ev-table th:first-child {
+        text-align: left;
+      }
+      .ev-table .chosen {
+        font-weight: 700;
+        color: var(--green);
+      }
+      .log-section {
+        margin-top: 25px;
+        padding-top: 20px;
+        border-top: 1px solid var(--line);
+      }
+      .log-section h3 {
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+      .action-log {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: 200px;
+        overflow: auto;
+      }
+      .action-log li {
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 7px 0;
+        border-bottom: 1px solid #e1e9e4;
+      }
+      .action-log li.current {
+        font-weight: 700;
+        color: var(--green);
+      }
+      .log-actor {
+        max-width: 72px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .notes {
+        margin-top: 20px;
+        border-top: 1px solid var(--line);
+        padding-top: 15px;
+        font-size: 12px;
+      }
+      .notes summary {
+        font-weight: 600;
+        min-height: 32px;
+      }
+      .notes p {
+        margin: 9px 0;
+        color: var(--muted);
+      }
+      .warning {
+        margin-top: 10px;
+        background: #fff1d5;
+        color: #67460f;
+        border-radius: 7px;
+        padding: 9px 11px;
+        font-size: 12px;
+      }
+      .notice {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 12px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+      .playback-flash .board .card:not(.placeholder) {
+        animation: deal 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes deal {
+        from {
+          transform: translateY(-9px) rotate(-3deg);
+        }
+        to {
+          transform: translateY(0) rotate(0);
+        }
+      }
+      @media (min-width: 1550px) {
+        .table {
+          height: 530px;
+        }
+        .stage-panel {
+          padding: 24px 35px;
+        }
+      }
+      @media (max-width: 1150px) {
+        .workspace {
+          grid-template-columns: 220px minmax(390px, 1fr);
+        }
+        .inspector {
+          grid-column: 2;
+          border-left: 0;
+          border-top: 1px solid var(--line);
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0 24px;
+        }
+        .inspector > h2 {
+          grid-column: 1/-1;
+        }
+        .decision-box {
+          grid-row: 2/5;
+        }
+        .log-section {
+          margin-top: 0;
+          border-top: 0;
+          padding-top: 0;
+        }
+        .notes {
+          margin-top: 12px;
+        }
+        .table {
+          height: 480px;
+        }
+        .stage-panel {
+          padding: 22px 18px;
+        }
+        .library {
+          grid-row: 1/3;
+        }
+        .hand-list {
+          max-height: calc(100vh - 330px);
+        }
+      }
+      @media (max-width: 740px) {
+        .topbar {
+          padding: 14px 16px;
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 11px;
+        }
+        .brand {
+          width: 100%;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .brand p {
+          font-size: 12px;
+        }
+        .settings {
+          font-size: 12px;
+          gap: 12px;
+        }
+        .settings select {
+          min-height: 34px;
+          font-size: 12px;
+        }
+        .session-line {
+          padding: 10px 16px;
+          gap: 10px;
+          font-size: 12px;
+        }
+        .session-line strong {
+          font-size: 13px;
+        }
+        .local-note {
+          display: none;
+        }
+        .workspace {
+          display: flex;
+          flex-direction: column;
+        }
+        .stage-panel {
+          order: 0;
+          padding: 18px 12px 20px;
+        }
+        .library {
+          order: 2;
+          border-right: 0;
+          border-top: 1px solid var(--line);
+          padding: 22px 16px;
+        }
+        .hand-list {
+          max-height: 310px;
+          min-height: 90px;
+        }
+        .inspector {
+          order: 1;
+          display: block;
+          padding: 22px 20px;
+        }
+        .inspector > h2 {
+          margin-bottom: 14px;
+        }
+        .decision-box {
+          min-height: 0;
+        }
+        .table {
+          height: 410px;
+        }
+        .felt {
+          inset: 40px 10px 55px;
+          border-width: 7px;
+        }
+        .felt::after {
+          inset: 9px;
+        }
+        .seat-body {
+          padding: 3px 5px;
+          min-width: 65px;
+        }
+        .seat-name {
+          font-size: 10px;
+          max-width: 78px;
+        }
+        .seat-position {
+          font-size: 9px;
+        }
+        .seat-stack {
+          font-size: 10px;
+        }
+        .seat {
+          min-width: 65px;
+        }
+        .seat.hero .seat-body {
+          min-width: 88px;
+        }
+        .seat.hero .seat-cards .card {
+          width: 28px;
+          height: 39px;
+          font-size: 20px;
+        }
+        .seat.hero .seat-cards .card.unknown-suit {
+          font-size: 15px;
+        }
+        .seat-cards .card {
+          width: 20px;
+          height: 28px;
+          font-size: 14px;
+        }
+        .seat-cards .card.unknown-suit {
+          font-size: 12px;
+        }
+        .seat-bet {
+          font-size: 9px;
+        }
+        .card {
+          width: 30px;
+          height: 43px;
+          font-size: 21px;
+        }
+        .card.unknown-suit {
+          font-size: 16px;
+        }
+        .board {
+          min-height: 43px;
+          gap: 4px;
+        }
+        .board-area {
+          top: 42%;
+          min-width: 172px;
+        }
+        .pot {
+          font-size: 21px;
+          margin-bottom: 11px;
+        }
+        .pot-label {
+          font-size: 10px;
+        }
+        .hand-heading h2 {
+          font-size: 21px;
+        }
+        .hand-heading {
+          margin-bottom: 11px;
+          padding: 0 4px;
+        }
+        .result strong {
+          font-size: 16px;
+        }
+        .jump {
+          font-size: 12px;
+          padding: 6px 8px;
+        }
+        .log-section {
+          margin-top: 22px;
+          border-top: 1px solid var(--line);
+          padding-top: 18px;
+        }
+        .action-log {
+          max-height: 160px;
+        }
+        .decision-copy {
+          max-width: 65ch;
+        }
+        .notes {
+          margin-top: 20px;
+        }
+        .filter-bar button {
+          min-height: 39px;
+        }
+        .hand-row {
+          min-height: 65px;
+        }
+        .transport-main {
+          gap: 5px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <h1>나의 핸드 복기</h1>
+        <p>hand-review · Pokerist</p>
+      </div>
+      <div class="settings">
+        <label class="setting"
+          >모드
+          <select id="mode">
+            <option value="review">복기</option>
+            <option value="practice">먼저 선택하기</option>
+          </select></label
+        >
+        <label class="setting"
+          >단위
+          <select id="unit">
+            <option value="bb">BB</option>
+            <option value="chips">칩</option>
+          </select></label
+        >
+        <label class="setting"
+          ><input id="hide-result" type="checkbox" checked /> 결과 숨김</label
+        >
+      </div>
+    </header>
+    <div class="session-line">
+      <strong id="session-count"></strong><span id="session-grades"></span
+      ><span class="local-note">로컬 복기 · 외부 연결 없음</span>
+    </div>
+    <main class="workspace">
+      <aside class="library" aria-label="핸드와 리뷰 장면">
+        <h2>리뷰할 장면</h2>
+        <div class="filter-bar" id="filters" aria-label="판단 분류"></div>
+        <label class="sr-only" for="search">핸드 번호, 카드, 포지션 검색</label
+        ><input
+          class="search"
+          id="search"
+          type="search"
+          placeholder="핸드 번호, 카드, 포지션 검색"
+          autocomplete="off"
+        />
+        <div class="list-caption">
+          <span id="list-label">핸드 목록</span
+          ><span id="list-count" class="number"></span>
+        </div>
+        <nav class="hand-list" id="hand-list" aria-label="핸드 선택"></nav>
+        <p class="notice">
+          블런더·베스트는 결정별 분류입니다. 한 핸드에 두 종류가 함께 있을 수
+          있습니다.
+        </p>
+      </aside>
+      <section class="stage-panel" aria-label="포커 테이블 재생">
+        <div class="hand-heading">
+          <div>
+            <h2 id="hand-title"></h2>
+            <p id="hand-meta"></p>
+          </div>
+          <div class="result" id="result"></div>
+        </div>
+        <nav class="streets" id="streets" aria-label="스트리트 이동"></nav>
+        <div class="table" id="table">
+          <div class="felt"></div>
+          <div class="board-area">
+            <div class="pot-label" id="pot-label"></div>
+            <div class="pot" id="pot"></div>
+            <div class="board" id="board" aria-label="공개된 보드"></div>
+          </div>
+          <div id="seats"></div>
+        </div>
+        <div class="status-line" id="status" aria-live="polite"></div>
+        <div class="controls">
+          <div class="progress-label">
+            <label for="scrubber">액션 이동</label
+            ><span class="number" id="progress"></span>
+          </div>
+          <input type="range" id="scrubber" min="0" value="0" />
+          <div class="transport">
+            <div class="transport-main">
+              <button
+                class="icon-button"
+                id="restart"
+                aria-label="처음으로"
+              ></button
+              ><button
+                class="icon-button"
+                id="previous"
+                aria-label="이전 액션"
+              ></button
+              ><button
+                class="icon-button primary play"
+                id="play"
+                aria-label="재생"
+              ></button
+              ><button
+                class="icon-button"
+                id="next"
+                aria-label="다음 액션"
+              ></button>
+            </div>
+            <button class="jump" id="next-decision">다음 내 결정</button>
+          </div>
+          <div class="transport-meta">
+            <label class="setting"
+              ><input id="pause-hero" type="checkbox" checked /> 내 차례에서
+              멈춤</label
+            ><span>Space · ← →</span
+            ><label
+              >속도
+              <select id="speed">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+              </select></label
+            >
+          </div>
+        </div>
+        <div id="hand-warnings"></div>
+        <p class="notice">
+          스택은 마지막 관측값입니다. 팟 회수와 자동 충전은 재현하지 않습니다.
+          /s4는 원본의 미확정 슈트 표기입니다.
+        </p>
+      </section>
+      <aside class="inspector" aria-label="내 결정 분석">
+        <h2>나의 결정</h2>
+        <div class="decision-box" id="decision"></div>
+        <section class="log-section">
+          <h3>지금까지의 액션</h3>
+          <ol class="action-log" id="action-log"></ol>
+        </section>
+        <details class="notes" id="method">
+          <summary>분류와 분석 기준</summary>
+          <p>
+            휴리스틱의 블런더·베스트는 복기 후보입니다. 포지션·핸드 강도·투자
+            크기로 제한적인 규칙을 적용하며 GTO 최적해나 EV를 뜻하지 않습니다.
+            해당되지 않는 결정은 미평가로 둡니다.
+          </p>
+          <p>
+            넛 여부는 결정 당시 보드에서 가능한 상대 두 장을 전수 비교합니다.
+            향후 승률·최적 사이즈를 의미하지 않습니다. 결과, 미래 보드, 쇼다운
+            카드는 평가에 사용하지 않습니다.
+          </p>
+          <p id="solver-method"></p>
+          <p>
+            표시된 Net은 기록의 핸드 간 스택 차이이며 자동 충전·테이블 이동이
+            포함될 수 있습니다. 이긴 핸드도 실수할 수 있고, 진 핸드도 잘한
+            결정이 있을 수 있습니다.
+          </p>
+          <p id="import-notes"></p>
+        </details>
+      </aside>
+    </main>
+    <script type="application/json" id="report-data">__HAND_REVIEW_DATA__</script>
+    <script>
+      "use strict";
+      const report = JSON.parse(
+        document.getElementById("report-data").textContent,
+      );
+      const $ = (id) => document.getElementById(id);
+      const el = (tag, cls, text) => {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
+      };
+      const grades = {
+        all: "전체",
+        blunder: "블런더",
+        best: "베스트",
+        review: "검토",
+        unscored: "미평가",
+      };
+      const icons = {
+        play: '<path d="m8 5 11 7-11 7z"/>',
+        pause: '<path d="M8 5v14M16 5v14"/>',
+        previous: '<path d="m15 5-7 7 7 7"/>',
+        next: '<path d="m9 5 7 7-7 7"/>',
+        restart: '<path d="M5 5v14m14-14L9 12l10 7"/>',
+      };
+      function icon(button, name) {
+        button.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          icons[name] +
+          "</svg>";
+      }
+      let selected = report.hands.findIndex((h) =>
+        h.decisions.some(
+          (d) => d.stage !== "Preflop" && d.review.grade === "best",
+        ),
+      );
+      if (selected < 0) selected = 0;
+      let frame = 0,
+        filter = "all",
+        playing = false,
+        timer = null,
+        practice = false,
+        unit = "bb",
+        previousStage = null;
+      const answered = new Map();
+      const hand = () => report.hands[selected];
+      const answerKey = (d) => hand().id + ":" + d.action_frame;
+      function amount(value) {
+        if (
+          value === null ||
+          value === undefined ||
+          !Number.isFinite(Number(value))
+        )
+          return "미확인";
+        if (unit === "bb" && hand().bb)
+          return (
+            (value / hand().bb).toLocaleString("ko-KR", {
+              maximumFractionDigits: 1,
+            }) + " BB"
+          );
+        return (
+          Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 0 }) +
+          " 칩"
+        );
+      }
+      function shortCards(cards) {
+        return cards.length ? cards.join(" ") : "카드 미확인";
+      }
+      function card(label, hidden = false) {
+        const n = el("span", "card");
+        if (hidden) {
+          n.classList.add("back");
+          n.setAttribute("aria-label", "비공개 카드");
+          return n;
+        }
+        if (!label) {
+          n.classList.add("placeholder");
+          n.setAttribute("aria-label", "아직 공개되지 않은 카드");
+          return n;
+        }
+        n.setAttribute("aria-label", label);
+        if (label.includes("♥") || label.includes("♦")) n.classList.add("red");
+        if (label.includes("/s4")) {
+          n.classList.add("unknown-suit");
+          n.append(el("b", "", label.split("/")[0]), el("span", "", "/s4"));
+        } else n.textContent = label;
+        return n;
+      }
+      function badge(grade) {
+        return el(
+          "span",
+          "badge " + grade,
+          grades[grade] +
+            (grade === "blunder" || grade === "best" ? " 후보" : ""),
+        );
+      }
+      function stop() {
+        playing = false;
+        clearTimeout(timer);
+        timer = null;
+        icon($("play"), "play");
+        $("play").setAttribute("aria-label", "재생");
+      }
+      function seek(target) {
+        stop();
+        const h = hand();
+        let index = Math.max(0, Math.min(h.frames.length - 1, target));
+        if (practice && index > frame) {
+          const pending = h.decisions.find(
+            (d) =>
+              d.frame >= frame &&
+              d.frame < index &&
+              !answered.has(answerKey(d)),
+          );
+          if (pending) index = pending.frame;
+        }
+        frame = index;
+        render();
+      }
+      function chooseHand(index, scene = null) {
+        stop();
+        selected = index;
+        frame = scene === null ? 0 : hand().decisions[scene].frame;
+        previousStage = null;
+        render();
+      }
+      function currentDecision() {
+        return (
+          hand().decisions.find((d) => d.frame === frame) ||
+          hand().decisions.find((d) => d.action_frame === frame)
+        );
+      }
+      function advance() {
+        const h = hand();
+        const pending = h.decisions.find(
+          (d) => d.frame === frame && !answered.has(answerKey(d)),
+        );
+        if (practice && pending) {
+          stop();
+          render();
+          return;
+        }
+        if (frame >= h.frames.length - 1) {
+          stop();
+          render();
+          return;
+        }
+        frame++;
+        render();
+        if (
+          h.decisions.some(
+            (d) =>
+              d.frame === frame &&
+              ((practice && !answered.has(answerKey(d))) ||
+                $("pause-hero").checked),
+          )
+        ) {
+          stop();
+          return;
+        }
+        if (playing)
+          timer = setTimeout(advance, 1400 / Number($("speed").value));
+      }
+      function play() {
+        if (playing) {
+          stop();
+          return;
+        }
+        if (frame === hand().frames.length - 1) frame = 0;
+        playing = true;
+        icon($("play"), "pause");
+        $("play").setAttribute("aria-label", "일시 정지");
+        advance();
+      }
+      function renderFilters() {
+        const root = $("filters"),
+          focused = root.contains(document.activeElement)
+            ? document.activeElement.dataset.filter
+            : null;
+        root.replaceChildren();
+        for (const [key, label] of Object.entries(grades)) {
+          const count =
+            key === "all" ? report.hands.length : report.grades[key] || 0;
+          const b = el("button", "", label + " " + count);
+          b.dataset.filter = key;
+          b.setAttribute("aria-pressed", String(filter === key));
+          b.disabled = practice && key !== "all";
+          b.onclick = () => {
+            filter = key;
+            $("hand-list").scrollTop = 0;
+            renderList();
+            renderFilters();
+          };
+          root.append(b);
+        }
+        if (focused)
+          root
+            .querySelector('[data-filter="' + focused + '"]')
+            ?.focus({ preventScroll: true });
+      }
+      function renderList() {
+        const root = $("hand-list"),
+          scrollPosition = root.scrollTop,
+          focused = root.contains(document.activeElement)
+            ? document.activeElement.dataset.row
+            : null,
+          query = $("search").value.toLowerCase().replaceAll(" ", "");
+        root.replaceChildren();
+        let count = 0;
+        report.hands.forEach((h, i) => {
+          const search = [
+            h.number,
+            h.hero.position || "",
+            shortCards(h.hero.cards),
+            h.hero.cards
+              .map((c) => c.replaceAll("/s4", "").replace(/[♥♦♣♠]/g, ""))
+              .join(""),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .replaceAll(" ", "");
+          if (query && !search.includes(query)) return;
+          const scenes =
+            filter === "all"
+              ? [null]
+              : h.decisions.flatMap((d, j) =>
+                  d.review.grade === filter ? [j] : [],
+                );
+          for (const scene of scenes) {
+            const d = scene === null ? null : h.decisions[scene];
+            const row = el("button", "hand-row");
+            row.dataset.row = i + ":" + (scene === null ? "hand" : scene);
+            row.setAttribute(
+              "aria-current",
+              String(
+                i === selected &&
+                  (scene === null ||
+                    d.frame === frame ||
+                    d.action_frame === frame),
+              ),
+            );
+            row.append(
+              el(
+                "strong",
+                "number",
+                "#" +
+                  String(h.number).padStart(2, "0") +
+                  (d ? " · " + d.stage : ""),
+              ),
+              el("span", "row-cards", shortCards(h.hero.cards)),
+            );
+            let description =
+              (h.hero.position || "포지션 미확인") +
+              " · " +
+              (d ? d.review.title : "내 결정 " + h.decisions.length + "개");
+            if (!d && !practice) {
+              const labels = ["blunder", "best"]
+                .filter((g) => h.decisions.some((x) => x.review.grade === g))
+                .map((g) => grades[g] + " 후보");
+              if (labels.length) description += " · " + labels.join(" / ");
+            }
+            row.append(el("span", "row-description", description));
+            row.onclick = () => chooseHand(i, scene);
+            root.append(row);
+            count++;
+          }
+        });
+        if (!count)
+          root.append(
+            el(
+              "p",
+              "empty",
+              "조건에 맞는 장면이 없습니다. 분류나 검색어를 바꿔 보세요.",
+            ),
+          );
+        root.scrollTop = scrollPosition;
+        if (focused)
+          root
+            .querySelector('[data-row="' + focused + '"]')
+            ?.focus({ preventScroll: true });
+        $("list-count").textContent = count + "개";
+        $("list-label").textContent =
+          filter === "all" ? "핸드 목록" : "결정별 장면";
+      }
+      function renderSeats(f) {
+        const decision = currentDecision();
+        const actor =
+          decision && decision.frame === frame
+            ? hand().hero.seat
+            : f.action?.seat;
+        const root = $("seats");
+        root.replaceChildren();
+        let people = [...f.players].sort((a, b) => a.seat - b.seat);
+        const heroIndex = people.findIndex((p) => p.seat === hand().hero.seat);
+        if (heroIndex >= 0)
+          people = [...people.slice(heroIndex), ...people.slice(0, heroIndex)];
+        people.forEach((p, i) => {
+          const angle = Math.PI / 2 + (i * 2 * Math.PI) / people.length;
+          const seat = el(
+            "div",
+            "seat" +
+              (p.seat === hand().hero.seat ? " hero" : "") +
+              (p.folded ? " folded" : "") +
+              (actor === p.seat ? " active" : ""),
+          );
+          seat.style.left = 50 + 40 * Math.cos(angle) + "%";
+          seat.style.top = 45 + 36 * Math.sin(angle) + "%";
+          const body = el("div", "seat-body");
+          const name = el(
+            "div",
+            "seat-name",
+            p.seat === hand().hero.seat ? "나 · " + p.nick : p.nick,
+          );
+          name.title = p.nick;
+          body.append(name);
+          const position = el(
+            "div",
+            "seat-position",
+            p.position || "좌석 " + p.seat,
+          );
+          if (p.position === "BTN") position.append(el("span", "dealer", "D"));
+          body.append(
+            position,
+            el("div", "seat-stack", p.all_in ? "ALL IN" : amount(p.stack)),
+          );
+          seat.append(body);
+          const cards = el("div", "seat-cards");
+          if (p.cards.length) p.cards.forEach((c) => cards.append(card(c)));
+          else if (!p.folded) {
+            cards.append(card(null, true), card(null, true));
+          }
+          seat.append(cards);
+          if (p.bet > 0)
+            seat.append(el("div", "seat-bet number", amount(p.bet)));
+          root.append(seat);
+        });
+      }
+      function renderBoard(f) {
+        const board = $("board");
+        board.replaceChildren();
+        for (let i = 0; i < 5; i++) board.append(card(f.board[i]));
+        $("pot").textContent = amount(
+          f.finished && f.recorded_pot !== null && f.recorded_pot !== undefined
+            ? f.recorded_pot
+            : f.pot,
+        );
+        $("pot-label").textContent =
+          f.finished && f.recorded_pot !== null && f.recorded_pot !== undefined
+            ? "기록 최종 팟"
+            : "팟 · 관측 기여 합계";
+        if (previousStage && previousStage !== f.stage) {
+          $("table").classList.remove("playback-flash");
+          void $("table").offsetWidth;
+          $("table").classList.add("playback-flash");
+        }
+        previousStage = f.stage;
+      }
+      function renderDecision() {
+        const root = $("decision");
+        root.replaceChildren();
+        const d = currentDecision();
+        if (!d) {
+          root.append(
+            el(
+              "h3",
+              "",
+              hand().frames[frame].finished
+                ? "핸드 복기가 끝났습니다"
+                : "액션을 따라가 보세요",
+            ),
+            el(
+              "p",
+              "decision-copy muted",
+              hand().frames[frame].finished
+                ? "목록에서 다음 핸드를 고르거나 처음부터 다시 볼 수 있습니다."
+                : "‘다음 내 결정’을 누르면 내가 판단했던 순간에서 멈춥니다.",
+            ),
+          );
+          return;
+        }
+        const spot = el("dl", "spot");
+        for (const [label, value] of [
+          ["콜 비용", amount(d.spot.to_call)],
+          [
+            "팟 오즈",
+            d.spot.pot_odds === null
+              ? "해당 없음"
+              : (d.spot.pot_odds * 100).toFixed(1) + "%",
+          ],
+          ["참가 중", d.spot.active + "명"],
+          ["내 스택", amount(d.spot.stack)],
+        ]) {
+          const box = el("div");
+          box.append(el("dt", "", label), el("dd", "", value));
+          spot.append(box);
+        }
+        const answer = answered.get(answerKey(d));
+        if (practice && !answer) {
+          root.append(
+            el("span", "decision-street", d.stage + " · 내 차례"),
+            el("h3", "", "지금, 어떻게 할까요?"),
+            spot,
+          );
+          const choices = el("div", "practice-buttons");
+          for (const [value, label] of d.spot.to_call > 0
+            ? [
+                ["FOLD", "폴드"],
+                ["CALL", "콜"],
+                ...(d.spot.can_raise ? [["RAISE", "레이즈"]] : []),
+              ]
+            : [
+                ["CHECK", "체크"],
+                ["BET", "벳"],
+              ]) {
+            const b = el("button", "", label);
+            b.onclick = () => {
+              answered.set(answerKey(d), label);
+              renderDecision();
+              $("replay-action")?.focus({ preventScroll: true });
+            };
+            choices.append(b);
+          }
+          root.append(
+            choices,
+            el(
+              "p",
+              "training-note",
+              "선택 후 기록된 액션과 평가가 공개됩니다. 선택은 비교용이며 이후에는 실제 기록을 재생합니다.",
+            ),
+          );
+          return;
+        }
+        const r = d.review,
+          head = el("div", "decision-head");
+        head.append(
+          el(
+            "span",
+            "decision-street",
+            d.stage + " · " + (frame === d.frame ? "액션 직전" : "액션 직후"),
+          ),
+          badge(r.grade),
+        );
+        root.append(
+          head,
+          el("h3", "", r.title),
+          el(
+            "span",
+            "basis",
+            r.basis === "solver"
+              ? "솔버 EV · 명시한 레인지 가정"
+              : r.basis === "heuristic"
+                ? "휴리스틱 · 최적해 미확정"
+                : "평가 보류",
+          ),
+        );
+        const actual =
+          d.action.label +
+          (d.action.paid > 0 ? " " + amount(d.action.paid) : "");
+        root.append(
+          el(
+            "p",
+            "decision-copy",
+            (answer ? "내 선택: " + answer + " · " : "") + "기록: " + actual,
+          ),
+          spot,
+          el("p", "decision-copy", r.reason),
+        );
+        if (r.evs) {
+          const table = el("table", "ev-table"),
+            thead = el("thead"),
+            tr = el("tr");
+          tr.append(el("th", "", "액션"), el("th", "", "EV (BB)"));
+          thead.append(tr);
+          table.append(thead);
+          const tbody = el("tbody");
+          Object.entries(r.evs).forEach(([a, v]) => {
+            const row = el("tr", a === r.mapped_action ? "chosen" : "");
+            row.append(
+              el("td", "", a + (a === r.mapped_action ? " · 실제 대응" : "")),
+              el("td", "number", v.toFixed(2)),
+            );
+            tbody.append(row);
+          });
+          table.append(tbody);
+          root.append(table);
+          if (r.approximate)
+            root.append(
+              el(
+                "p",
+                "training-note",
+                "실제 사이즈 " +
+                  r.actual_action +
+                  " → 트리 " +
+                  r.mapped_action +
+                  " 근사",
+              ),
+            );
+        }
+        root.append(el("p", "recommendation", r.recommendation));
+        if (r.solver_note) root.append(el("p", "training-note", r.solver_note));
+        if (practice && frame === d.frame) {
+          const b = el("button", "primary", "기록된 액션 재생");
+          b.id = "replay-action";
+          b.onclick = () => {
+            seek(d.action_frame);
+            $("next").focus({ preventScroll: true });
+          };
+          root.append(b);
+        }
+      }
+      function render() {
+        const h = hand(),
+          f = h.frames[frame];
+        $("hand-title").textContent =
+          "핸드 #" + String(h.number).padStart(2, "0");
+        const date = Number.isFinite(h.started_ts)
+          ? new Date(h.started_ts).toLocaleString("ko-KR", {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "시간 미확인";
+        $("hand-meta").textContent =
+          date +
+          " · " +
+          (h.hero.position || "포지션 미확인") +
+          " · 테이블 " +
+          (h.table_id || "미확인");
+        const result = $("result");
+        result.replaceChildren();
+        if ($("hide-result").checked || practice) {
+          result.append(el("small", "", "결과 숨김"));
+        } else {
+          result.append(
+            el("small", "", "기록 Net"),
+            el(
+              "strong",
+              "number",
+              h.net === null ? "보류" : (h.net > 0 ? "+" : "") + amount(h.net),
+            ),
+          );
+        }
+        renderSeats(f);
+        renderBoard(f);
+        const streets = $("streets");
+        streets.replaceChildren();
+        for (const s of ["Preflop", "Flop", "Turn", "River"]) {
+          const index = h.frames.findIndex((x) => x.stage === s),
+            b = el("button", "", s);
+          b.disabled = index < 0;
+          b.setAttribute("aria-current", String(f.stage === s));
+          b.onclick = () => seek(index);
+          streets.append(b);
+        }
+        $("status").textContent =
+          practice &&
+          h.decisions.some(
+            (d) => d.frame === frame && !answered.has(answerKey(d)),
+          )
+            ? "내 차례입니다. 먼저 액션을 선택해 보세요."
+            : f.label;
+        $("scrubber").max = h.frames.length - 1;
+        $("scrubber").value = frame;
+        $("progress").textContent = frame + " / " + (h.frames.length - 1);
+        $("previous").disabled = frame === 0;
+        $("next").disabled = frame === h.frames.length - 1;
+        const nextDecision = h.decisions.find((d) => d.frame > frame);
+        $("next-decision").disabled = !nextDecision;
+        renderDecision();
+        const log = $("action-log");
+        log.replaceChildren();
+        h.frames.slice(0, frame + 1).forEach((x, i) => {
+          if (!x.action) return;
+          const row = el("li", i === frame ? "current" : ""),
+            p = x.players.find((p) => p.seat === x.action.seat);
+          row.append(
+            el("span", "log-actor", p.seat === h.hero.seat ? "나" : p.nick),
+            el(
+              "span",
+              "",
+              x.stage +
+                " · " +
+                x.action.label +
+                (x.action.paid > 0 ? " " + amount(x.action.paid) : ""),
+            ),
+          );
+          log.append(row);
+        });
+        log.scrollTop = log.scrollHeight;
+        const warning = $("hand-warnings");
+        warning.replaceChildren();
+        h.warnings.forEach((w) => warning.append(el("p", "warning", w)));
+        renderList();
+      }
+      for (const [id, name] of [
+        ["play", "play"],
+        ["previous", "previous"],
+        ["next", "next"],
+        ["restart", "restart"],
+      ])
+        icon($(id), name);
+      $("play").onclick = play;
+      $("previous").onclick = () => seek(frame - 1);
+      $("next").onclick = () => seek(frame + 1);
+      $("restart").onclick = () => {
+        if (practice)
+          hand().decisions.forEach((d) => answered.delete(answerKey(d)));
+        seek(0);
+      };
+      $("next-decision").onclick = () => {
+        const d = hand().decisions.find((x) => x.frame > frame);
+        if (d) seek(d.frame);
+      };
+      $("scrubber").oninput = (e) => seek(Number(e.target.value));
+      $("search").oninput = () => {
+        $("hand-list").scrollTop = 0;
+        renderList();
+      };
+      $("unit").onchange = (e) => {
+        unit = e.target.value;
+        render();
+      };
+      $("hide-result").onchange = render;
+      $("mode").onchange = (e) => {
+        stop();
+        practice = e.target.value === "practice";
+        if (practice) {
+          filter = "all";
+          frame = 0;
+        }
+        renderFilters();
+        render();
+      };
+      document.addEventListener("keydown", (e) => {
+        if (e.target.closest("input,select,button,summary,a")) return;
+        if (e.code === "Space") {
+          e.preventDefault();
+          play();
+        } else if (e.code === "ArrowRight") {
+          e.preventDefault();
+          seek(frame + 1);
+        } else if (e.code === "ArrowLeft") {
+          e.preventDefault();
+          seek(frame - 1);
+        }
+      });
+      $("session-count").textContent =
+        report.hands.length +
+        "핸드 · " +
+        report.hands.reduce((n, h) => n + h.decisions.length, 0) +
+        "번의 내 결정";
+      $("session-grades").textContent =
+        "블런더 후보 " +
+        (report.grades.blunder || 0) +
+        " · 베스트 후보 " +
+        (report.grades.best || 0);
+      $("solver-method").textContent = report.ranges
+        ? "솔버: 고정 OOP " +
+          report.ranges.oop +
+          " / IP " +
+          report.ranges.ip +
+          ". 완전한 헤즈업 턴·리버만 분석합니다. 사이즈는 가장 가까운 트리에 대응합니다. EV 손실 2BB 이상을 블런더, 0.1BB 또는 수렴 오차 두 배 이내를 베스트로 구분합니다. 나머지 등급은 검토입니다."
+        : "이번 보고서는 솔버 EV를 계산하지 않았습니다. CLI에서 --oop-range와 --ip-range를 함께 지정하면 지원되는 헤즈업 턴·리버 결정을 분석할 수 있습니다.";
+      $("import-notes").textContent =
+        "중복 제외 " +
+        report.duplicates +
+        "개 · 읽기 실패 " +
+        report.errors.length +
+        "개" +
+        (report.errors.length ? ". " + report.errors.join("; ") : "");
+      renderFilters();
+      render();
+    </script>
+  </body>
+</html>

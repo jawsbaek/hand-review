@@ -380,6 +380,11 @@ def main():
     h.add_argument("--samples", type=int, default=5000)
     h.add_argument("--oop-range", help="턴·리버 EV 채점용 OOP 레인지 (문자열 'AA,KQs:0.5' 또는 CSV 경로)")
     h.add_argument("--ip-range", help="턴·리버 EV 채점용 IP 레인지 (문자열 또는 CSV 경로)")
+    r = sub.add_parser("replay", help="Pokerist JSONL을 로컬 브라우저 복기 화면으로 변환")
+    r.add_argument("path", type=Path)
+    r.add_argument("--output", "-o", type=Path, default=Path("reports/replay.html"))
+    r.add_argument("--oop-range", help="선택적 헤즈업 턴·리버 EV 분석용 OOP 레인지")
+    r.add_argument("--ip-range", help="선택적 헤즈업 턴·리버 EV 분석용 IP 레인지")
     i = sub.add_parser("icm")
     i.add_argument("--stacks", type=float, nargs="+", required=True)
     i.add_argument("--payouts", type=float, nargs="+", required=True)
@@ -397,7 +402,7 @@ def main():
         if p is not None and not p.exists():
             ap.error(f"경로 없음: {p}")
 
-    if a.cmd == "hands":
+    if a.cmd in {"hands", "replay"}:
         ev_ranges = None
         if a.oop_range or a.ip_range:
             if not (a.oop_range and a.ip_range):
@@ -406,7 +411,17 @@ def main():
                 ap.error("EV 채점 엔진 없음: cargo build --release --manifest-path ev_rust/Cargo.toml")
             # ponytail: 레인지는 OOP/IP 고정, 프리플랍·플랍 액션으로 좁히지 않음 — 결과는 거친 근사
             ev_ranges = tuple(load_range_csv(r) if Path(r).is_file() else r for r in (a.oop_range, a.ip_range))
-        report_hands(a.path, a.hero, a.samples, ev_ranges)
+        if a.cmd == "hands":
+            report_hands(a.path, a.hero, a.samples, ev_ranges)
+        else:
+            from hand_review.replay import write_report
+
+            try:
+                report = write_report(a.path, a.output, ev_ranges)
+            except (OSError, ValueError) as e:
+                ap.error(str(e))
+            print(f"복기 {len(report['hands'])}핸드 · 중복 {report['duplicates']} · 건너뜀 {len(report['errors'])}")
+            print(f"로컬 브라우저에서 열기: {a.output.resolve().as_uri()}")
     elif a.cmd == "icm":
         total = sum(a.stacks)
         for n, (s, e) in enumerate(zip(a.stacks, icm(a.stacks, a.payouts), strict=True), 1):

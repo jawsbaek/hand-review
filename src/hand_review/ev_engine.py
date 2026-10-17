@@ -40,6 +40,7 @@ def solve_node(
     target_expl_pct=0.1,
     max_iter=1000,
     max_mem_gib=8.0,
+    timeout_seconds=None,
     **extra,
 ) -> dict:
     """원시 결과(actions/evs/strategy/exploitability/solve_ms/mem_bytes) 반환. path = 액션 이름(찬스 노드는 카드)."""
@@ -62,7 +63,7 @@ def solve_node(
     }
     if not BIN.exists():
         raise FileNotFoundError(f"{BIN} 없음: cargo build --release --manifest-path ev_rust/Cargo.toml")
-    p = subprocess.run([BIN], input=json.dumps(req), capture_output=True, text=True)
+    p = subprocess.run([BIN], input=json.dumps(req), capture_output=True, text=True, timeout=timeout_seconds)
     if p.returncode != 0:
         raise RuntimeError(f"ev_rust 실패: {p.stderr.strip()}")
     out = json.loads(p.stdout)
