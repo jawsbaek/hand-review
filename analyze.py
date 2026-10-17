@@ -4,12 +4,14 @@
   uv run analyze.py hands <파일|폴더> [--hero 이름]   # .phh / .phhs / PokerStars .txt
   uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
   uv run analyze.py mtt tournaments.csv              # date,name,buyin,prize
+  uv run analyze.py tui --hands samples/ --mtt samples/tournaments.csv
 """
 import argparse
 import csv
 import re
 import warnings
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from decimal import Decimal
 from functools import partial
@@ -20,7 +22,6 @@ from pokerkit import Deck, HandHistory, PokerStarsParser, StandardHighHand, calc
 warnings.filterwarnings("ignore", module="pokerkit")
 
 
-@dataclass
 class AntePokerStarsParser(PokerStarsParser):
     # PokerKit 0.7.6의 PokerStars 파서는 앤티를 무시함 → 토너먼트 스택이 틀어짐
     ANTE_POSTING = re.compile(r"(?P<player>.+): posts the ante \D?(?P<ante>[0-9.,]+)")
@@ -38,14 +39,17 @@ class Stats:
 
 
 def load_hands(path):
+    """핸드를 yield, 읽을 수 없는 핸드/파일은 None을 yield(건너뛴 수 집계용)."""
     files = [path] if path.is_file() else sorted(path.rglob("*"))
     for f in files:
-        if f.suffix == ".phh":
-            with f.open("rb") as fp:
-                yield HandHistory.load(fp)
-        elif f.suffix == ".phhs":
-            with f.open("rb") as fp:
-                yield from HandHistory.load_all(fp)
+        if f.suffix in (".phh", ".phhs"):
+            try:
+                with f.open("rb") as fp:
+                    hands = [HandHistory.load(fp)] if f.suffix == ".phh" else list(HandHistory.load_all(fp))
+            except (ValueError, KeyError, TypeError):
+                yield None
+                continue
+            yield from hands
         elif f.suffix == ".txt":
             # ponytail: PokerStars 포맷만 지원, GG 등은 파서 추가 필요
             text = f.read_text(encoding="utf-8-sig")
@@ -56,7 +60,12 @@ def load_hands(path):
 def load_pokerstars_hand(chunk):
     """PokerKit 파서는 레이크를 0%로 두므로, 요약의 'Total pot X | Rake Y'를 비율로 적용."""
     m = re.search(r"Total pot \D*?([\d.,]+).*?\| Rake \D*?([\d.,]+)", chunk)
-    for hh in AntePokerStarsParser()(chunk):
+    try:  # 미지원 변형(PLO 등)·깨진 핸드: 기본 동작은 traceback만 찍고 버림
+        hands = list(AntePokerStarsParser()(chunk, error_status=True))
+    except ValueError:
+        yield None
+        return
+    for hh in hands:
         if m:
             total, raked = (Decimal(g.replace(",", "")) for g in m.groups())
             if raked:
@@ -64,7 +73,7 @@ def load_pokerstars_hand(chunk):
         yield hh
 
 
-def allin_ev(state, samples):
+def allin_ev(state, samples, executor=None):
     """베팅이 끝난 올인 시점이면 플레이어별 팟 기대값(칩)을, 아니면 None."""
     active = [i for i, on in enumerate(state.statuses) if on]
     board = list(state.get_board_cards(0))
@@ -83,7 +92,7 @@ def allin_ev(state, samples):
         equities = calculate_equities(
             [[tuple(state.hole_cards[i])] for i in eligible],
             board, 2, 5, Deck.STANDARD, (StandardHighHand,),
-            sample_count=samples,
+            sample_count=samples, executor=executor,
         )
         for i, eq in zip(eligible, equities):
             ev[i] += eq * float(pot.unraked_amount)  # 레이크 뺀 팟
@@ -92,14 +101,18 @@ def allin_ev(state, samples):
 
 def reveal_shown_cards(hh):
     """쇼다운에서 공개된 카드를 딜 단계에 채워, 올인 시점에도 상대 카드를 알게 함."""
-    shown = {a.split()[0]: a.split()[2] for a in hh.actions if len(a.split()) == 3 and a.split()[1] == "sm" and "?" not in a}
+    shown = {}
+    for a in hh.actions:
+        who, op, *cards = a.split()
+        if op == "sm" and cards and "?" not in cards[0]:
+            shown[who] = cards[0]
     hh.actions = [
         f"d dh {a.split()[2]} {shown[a.split()[2]]}" if a.startswith("d dh") and a.split()[2] in shown else a
         for a in hh.actions
     ]
 
 
-def analyze_hand(hh, stats, samples=5000):
+def analyze_hand(hh, stats, samples=5000, executor=None):
     reveal_shown_cards(hh)
     names = hh.players or [f"p{i + 1}" for i in range(len(hh.starting_stacks))]
     bb = float(max(hh.blinds_or_straddles))
@@ -124,10 +137,12 @@ def analyze_hand(hh, stats, samples=5000):
             elif op == "cc" and to_call:
                 vpip.add(i)
         if ev is None and state.status:
-            if (pot_ev := allin_ev(state, samples)) is not None:
+            if (pot_ev := allin_ev(state, samples, executor)) is not None:
                 ev = {i: pot_ev[i] - (start[i] - float(state.stacks[i])) for i in range(len(start))}
         # state는 같은 객체가 변경되며 재사용되므로 다음 액션용 콜 금액을 값으로 저장
         to_call = state.checking_or_calling_amount if state.actor_index is not None else 0
+    if state.status:  # 기록이 중간에 끊긴 핸드: 진행 중 스택을 손익으로 세면 안 됨
+        raise ValueError("hand not finished")
 
     for i, name in enumerate(names):
         s = stats[name]
@@ -167,12 +182,26 @@ HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR
 
 
 def compute_hand_rows(path, hero, samples):
+    """(행 목록, 건너뛴 핸드 수, 중복 핸드 수)."""
     stats = defaultdict(Stats)
-    for hh in load_hands(path):
-        analyze_hand(hh, stats, samples)
+    seen, skipped, dups = set(), 0, 0
+    with ProcessPoolExecutor() as executor:  # 올인 equity 몬테카를로 병렬화
+        for hh in load_hands(path):
+            if hh is None:
+                skipped += 1
+                continue
+            key = (hh.venue, hh.table, hh.hand)
+            if hh.hand is not None and key in seen:
+                dups += 1
+                continue
+            seen.add(key)
+            try:
+                analyze_hand(hh, stats, samples, executor)
+            except ValueError:
+                skipped += 1
     rows = [(n, s) for n, s in stats.items() if not hero or n == hero]
     rows.sort(key=lambda r: -r[1].hands)
-    return [
+    rows = [
         (
             n, s.hands, round(s.net_bb, 1), round(100 * s.net_bb / s.hands, 1),
             round(100 * s.ev_bb / s.hands, 1), pct(s.vpip, s.hands).strip(),
@@ -180,13 +209,16 @@ def compute_hand_rows(path, hero, samples):
         )
         for n, s in rows
     ]
+    return rows, skipped, dups
 
 
 def report_hands(path, hero, samples):
-    rows = compute_hand_rows(path, hero, samples)
+    rows, skipped, dups = compute_hand_rows(path, hero, samples)
     print(f"{'player':<16}{'hands':>6}{'net bb':>9}{'bb/100':>10}{'EV bb/100':>11}{'VPIP':>6}{'PFR':>6}{'3Bet':>6}")
     for n, hands, net, bb100, ev100, vpip, pfr, tb in rows[:20]:
         print(f"{n:<16}{hands:>6}{net:>9.1f}{bb100:>10.1f}{ev100:>11.1f}{vpip:>6}{pfr:>6}{tb:>6}")
+    if skipped or dups:
+        print(f"\n건너뜀: 읽기 실패/미지원/미완료 {skipped}개, 중복 {dups}개")
 
 
 def compute_mtt_summary(path):
@@ -207,7 +239,7 @@ def report_mtt(path):
 def run_tui(hands_path=None, hero=None, samples=5000, mtt_path=None, icm_stacks=None, icm_payouts=None):
     from poker_tui import PokerApp
 
-    hand_rows = compute_hand_rows(hands_path, hero, samples) if hands_path else None
+    hand_rows = compute_hand_rows(hands_path, hero, samples)[0] if hands_path else None
     mtt_summary = compute_mtt_summary(mtt_path) if mtt_path else None
     icm_result = (icm_stacks, icm_payouts, icm(icm_stacks, icm_payouts)) if icm_stacks else None
     PokerApp(hand_rows, mtt_summary, icm_result).run()

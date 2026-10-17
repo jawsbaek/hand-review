@@ -45,7 +45,7 @@ async def capture(name: str, app: PokerApp, tab_id: str | None = None):
 
 
 async def main():
-    hand_rows = compute_hand_rows(Path("samples"), None, 500)
+    hand_rows, _, _ = compute_hand_rows(Path("samples"), None, 500)
     icm_result = ([5000, 3000, 2000], [50, 30, 20], icm([5000, 3000, 2000], [50, 30, 20]))
     mtt_summary = (3, 100.0, 150.0, 2)
 

@@ -1,1 +1,22 @@
+# Python / 툴 캐시
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+dist/
+*.egg-info/
+.DS_Store
+
+# 외부 솔버 바이너리 (scripts/setup_solver.sh로 설치)
+.solver/
+
+# TUI 캡처 산출물 (capture.py)
 captures/
+
+# 비공개 작업 문서: 리서치 노트, 프로토타입, 리뷰 로그
+RESEARCH_*.md
+PROTOTYPE_*
+REVIEW.md
+
+# 에이전트/에디터 로컬 설정
+.claude/

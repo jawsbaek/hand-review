@@ -46,3 +46,20 @@ def test_icm():
     assert abs(a - 75) < 1e-9 and abs(b - 25) < 1e-9
     big, mid, small = icm([5000, 3000, 2000], [50, 30, 20])
     assert big < 50 * 1.0 and big / 100 < 0.5  # 칩 50%여도 상금 비중은 50% 미만
+
+
+def test_unreadable_and_unfinished_hands_are_flagged(tmp_path):
+    import pytest
+
+    plo = tmp_path / "plo.txt"
+    plo.write_text((S / "pokerstars_cash.txt").read_text().replace("Hold'em No Limit", "Omaha Pot Limit"))
+    assert list(load_hands(plo)) == [None]  # 조용히 사라지지 않고 None으로 표시
+
+    unfinished = tmp_path / "cut.phh"
+    unfinished.write_text(
+        'variant = "NT"\nantes = [0, 0]\nblinds_or_straddles = [1, 2]\nmin_bet = 2\n'
+        'starting_stacks = [100, 100]\nactions = ["d dh p1 AsKs", "d dh p2 QhQd", "p1 cbr 6"]\n'
+    )
+    (hh,) = load_hands(unfinished)
+    with pytest.raises(ValueError):
+        analyze_hand(hh, defaultdict(Stats))
