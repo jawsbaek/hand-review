@@ -163,29 +163,54 @@ def pct(a, b):
     return f"{100 * a / b:5.1f}" if b else "    -"
 
 
-def report_hands(path, hero, samples):
+HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet")
+
+
+def compute_hand_rows(path, hero, samples):
     stats = defaultdict(Stats)
     for hh in load_hands(path):
         analyze_hand(hh, stats, samples)
     rows = [(n, s) for n, s in stats.items() if not hero or n == hero]
     rows.sort(key=lambda r: -r[1].hands)
-    print(f"{'player':<16}{'hands':>6}{'net bb':>9}{'bb/100':>10}{'EV bb/100':>11}{'VPIP':>6}{'PFR':>6}{'3Bet':>6}")
-    for n, s in rows[:20]:
-        print(
-            f"{n:<16}{s.hands:>6}{s.net_bb:>9.1f}{100 * s.net_bb / s.hands:>10.1f}"
-            f"{100 * s.ev_bb / s.hands:>11.1f}{pct(s.vpip, s.hands):>6}"
-            f"{pct(s.pfr, s.hands):>6}{pct(s.threebet, s.threebet_opp):>6}"
+    return [
+        (
+            n, s.hands, round(s.net_bb, 1), round(100 * s.net_bb / s.hands, 1),
+            round(100 * s.ev_bb / s.hands, 1), pct(s.vpip, s.hands).strip(),
+            pct(s.pfr, s.hands).strip(), pct(s.threebet, s.threebet_opp).strip(),
         )
+        for n, s in rows
+    ]
 
 
-def report_mtt(path):
+def report_hands(path, hero, samples):
+    rows = compute_hand_rows(path, hero, samples)
+    print(f"{'player':<16}{'hands':>6}{'net bb':>9}{'bb/100':>10}{'EV bb/100':>11}{'VPIP':>6}{'PFR':>6}{'3Bet':>6}")
+    for n, hands, net, bb100, ev100, vpip, pfr, tb in rows[:20]:
+        print(f"{n:<16}{hands:>6}{net:>9.1f}{bb100:>10.1f}{ev100:>11.1f}{vpip:>6}{pfr:>6}{tb:>6}")
+
+
+def compute_mtt_summary(path):
     with open(path, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     buyin = sum(float(r["buyin"]) for r in rows)
     prize = sum(float(r["prize"]) for r in rows)
     itm = sum(float(r["prize"]) > 0 for r in rows)
-    print(f"토너먼트 {len(rows)}개 | 바이인 {buyin:.2f} | 상금 {prize:.2f} | 손익 {prize - buyin:+.2f}")
-    print(f"ROI {pct(prize - buyin, buyin)}% | ITM {pct(itm, len(rows))}%")
+    return len(rows), buyin, prize, itm
+
+
+def report_mtt(path):
+    n, buyin, prize, itm = compute_mtt_summary(path)
+    print(f"토너먼트 {n}개 | 바이인 {buyin:.2f} | 상금 {prize:.2f} | 손익 {prize - buyin:+.2f}")
+    print(f"ROI {pct(prize - buyin, buyin)}% | ITM {pct(itm, n)}%")
+
+
+def run_tui(hands_path=None, hero=None, samples=5000, mtt_path=None, icm_stacks=None, icm_payouts=None):
+    from poker_tui import PokerApp
+
+    hand_rows = compute_hand_rows(hands_path, hero, samples) if hands_path else None
+    mtt_summary = compute_mtt_summary(mtt_path) if mtt_path else None
+    icm_result = (icm_stacks, icm_payouts, icm(icm_stacks, icm_payouts)) if icm_stacks else None
+    PokerApp(hand_rows, mtt_summary, icm_result).run()
 
 
 def main():
@@ -200,6 +225,13 @@ def main():
     i.add_argument("--payouts", type=float, nargs="+", required=True)
     m = sub.add_parser("mtt")
     m.add_argument("path", type=Path)
+    t = sub.add_parser("tui")
+    t.add_argument("--hands", type=Path)
+    t.add_argument("--hero")
+    t.add_argument("--samples", type=int, default=5000)
+    t.add_argument("--mtt", type=Path)
+    t.add_argument("--stacks", type=float, nargs="+")
+    t.add_argument("--payouts", type=float, nargs="+")
     a = ap.parse_args()
 
     if a.cmd == "hands":
@@ -208,8 +240,12 @@ def main():
         total = sum(a.stacks)
         for n, (s, e) in enumerate(zip(a.stacks, icm(a.stacks, a.payouts)), 1):
             print(f"p{n}: 칩 {s:>9.0f} ({100 * s / total:4.1f}%)  ICM ${e:8.2f} ({100 * e / sum(a.payouts):4.1f}%)")
-    else:
+    elif a.cmd == "mtt":
         report_mtt(a.path)
+    else:
+        if not (a.hands or a.mtt or a.stacks):
+            ap.error("tui: --hands, --mtt, --stacks 중 하나 이상 필요")
+        run_tui(a.hands, a.hero, a.samples, a.mtt, a.stacks, a.payouts)
 
 
 if __name__ == "__main__":
