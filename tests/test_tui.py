@@ -44,3 +44,23 @@ def test_percent_columns_sort_numerically():
                 assert order == {"VPIP": ["C", "B", "A"], "3Bet": ["B", "C", "A"]}[col], (col, order)
 
     asyncio.run(run())
+
+
+def test_sorting_colored_signed_columns_does_not_crash():
+    # net bb/bb-100/EV bb-100 셀은 색을 입힌 rich.Text라서 기본 비교(<)가 안 됨 → _sort_key에서 unwrap 필요
+    rows = [
+        ("A", 3, 10.0, 100.0, 90.0, "50.0", "50.0", "50.0"),
+        ("B", 2, -5.0, -50.0, -40.0, "20.0", "20.0", "20.0"),
+    ]
+
+    async def run():
+        async with PokerApp(rows, None, None).run_test() as pilot:
+            await pilot.pause()
+            table = pilot.app.query_one("HandsTable")
+            for col in ("net bb", "bb/100", "EV bb/100"):
+                table.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": col})()})())
+                assert [table.get_row_at(i)[0] for i in range(table.row_count)] == ["B", "A"]
+                table.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": col})()})())
+                assert [table.get_row_at(i)[0] for i in range(table.row_count)] == ["A", "B"]
+
+    asyncio.run(run())
