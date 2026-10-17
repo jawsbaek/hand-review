@@ -1,0 +1,32 @@
+PokerStars Hand #250000000101: Tournament #3900000001, $5.00+$0.50 USD Hold'em No Limit - Level V (50/100) - 2026/10/17 21:00:00 KST [2026/10/17 8:00:00 ET]
+Table '3900000001 1' 9-max Seat #3 is the button
+Seat 1: VillainC (4200 in chips)
+Seat 2: Hero (2500 in chips)
+Seat 3: VillainD (6100 in chips)
+VillainC: posts the ante 10
+Hero: posts the ante 10
+VillainD: posts the ante 10
+VillainC: posts small blind 50
+Hero: posts big blind 100
+*** HOLE CARDS ***
+Dealt to Hero [Ac Qd]
+VillainD: raises 150 to 250
+VillainC: folds
+Hero: raises 2240 to 2490 and is all-in
+VillainD: calls 2240
+*** FLOP *** [Td 6s 2c]
+*** TURN *** [Td 6s 2c] [Kh]
+*** RIVER *** [Td 6s 2c Kh] [4d]
+*** SHOW DOWN ***
+Hero: shows [Ac Qd] (high card Ace)
+VillainD: shows [Jh Jc] (a pair of Jacks)
+VillainD collected 5060 from pot
+*** SUMMARY ***
+Total pot 5060 | Rake 0
+Board [Td 6s 2c Kh 4d]
+Seat 1: VillainC (small blind) folded before Flop
+Seat 2: Hero (big blind) showed [Ac Qd] and lost with high card Ace
+Seat 3: VillainD (button) showed [Jh Jc] and won (5060) with a pair of Jacks
+
+
+

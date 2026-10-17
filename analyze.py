@@ -1,0 +1,216 @@
+"""포커 핸드 히스토리 분석기: VPIP/PFR/3Bet, bb/100, 올인 EV, ICM, 토너먼트 ROI.
+
+사용법:
+  uv run analyze.py hands <파일|폴더> [--hero 이름]   # .phh / .phhs / PokerStars .txt
+  uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
+  uv run analyze.py mtt tournaments.csv              # date,name,buyin,prize
+"""
+import argparse
+import csv
+import re
+import warnings
+from collections import defaultdict
+from dataclasses import dataclass
+from decimal import Decimal
+from functools import partial
+from pathlib import Path
+
+from pokerkit import Deck, HandHistory, PokerStarsParser, StandardHighHand, calculate_equities, rake
+
+warnings.filterwarnings("ignore", module="pokerkit")
+
+
+@dataclass
+class AntePokerStarsParser(PokerStarsParser):
+    # PokerKit 0.7.6의 PokerStars 파서는 앤티를 무시함 → 토너먼트 스택이 틀어짐
+    ANTE_POSTING = re.compile(r"(?P<player>.+): posts the ante \D?(?P<ante>[0-9.,]+)")
+
+
+@dataclass
+class Stats:
+    hands: int = 0
+    net_bb: float = 0.0  # 실제 손익
+    ev_bb: float = 0.0  # 올인 시점 equity로 운을 걷어낸 손익
+    vpip: int = 0
+    pfr: int = 0
+    threebet: int = 0
+    threebet_opp: int = 0
+
+
+def load_hands(path):
+    files = [path] if path.is_file() else sorted(path.rglob("*"))
+    for f in files:
+        if f.suffix == ".phh":
+            with f.open("rb") as fp:
+                yield HandHistory.load(fp)
+        elif f.suffix == ".phhs":
+            with f.open("rb") as fp:
+                yield from HandHistory.load_all(fp)
+        elif f.suffix == ".txt":
+            # ponytail: PokerStars 포맷만 지원, GG 등은 파서 추가 필요
+            text = f.read_text(encoding="utf-8-sig")
+            for chunk in re.split(r"\n(?=PokerStars )", text):
+                yield from load_pokerstars_hand(chunk)
+
+
+def load_pokerstars_hand(chunk):
+    """PokerKit 파서는 레이크를 0%로 두므로, 요약의 'Total pot X | Rake Y'를 비율로 적용."""
+    m = re.search(r"Total pot \D*?([\d.,]+).*?\| Rake \D*?([\d.,]+)", chunk)
+    for hh in AntePokerStarsParser()(chunk):
+        if m:
+            total, raked = (Decimal(g.replace(",", "")) for g in m.groups())
+            if raked:
+                hh.rake = partial(rake, percentage=raked / total)
+        yield hh
+
+
+def allin_ev(state, samples):
+    """베팅이 끝난 올인 시점이면 플레이어별 팟 기대값(칩)을, 아니면 None."""
+    active = [i for i, on in enumerate(state.statuses) if on]
+    board = list(state.get_board_cards(0))
+    if (
+        len(active) < 2
+        or len(board) == 5
+        or any(state.bets)
+        or sum(state.stacks[i] > 0 for i in active) > 1
+        or any(c.unknown_status for i in active for c in state.hole_cards[i])
+        or any(len(state.hole_cards[i]) != 2 for i in active)
+    ):
+        return None
+    ev = defaultdict(float)
+    for pot in state.pots:  # 사이드팟마다 해당 플레이어들끼리 equity 계산
+        eligible = [i for i in pot.player_indices if state.statuses[i]]
+        equities = calculate_equities(
+            [[tuple(state.hole_cards[i])] for i in eligible],
+            board, 2, 5, Deck.STANDARD, (StandardHighHand,),
+            sample_count=samples,
+        )
+        for i, eq in zip(eligible, equities):
+            ev[i] += eq * float(pot.unraked_amount)  # 레이크 뺀 팟
+    return ev
+
+
+def reveal_shown_cards(hh):
+    """쇼다운에서 공개된 카드를 딜 단계에 채워, 올인 시점에도 상대 카드를 알게 함."""
+    shown = {a.split()[0]: a.split()[2] for a in hh.actions if len(a.split()) == 3 and a.split()[1] == "sm" and "?" not in a}
+    hh.actions = [
+        f"d dh {a.split()[2]} {shown[a.split()[2]]}" if a.startswith("d dh") and a.split()[2] in shown else a
+        for a in hh.actions
+    ]
+
+
+def analyze_hand(hh, stats, samples=5000):
+    reveal_shown_cards(hh)
+    names = hh.players or [f"p{i + 1}" for i in range(len(hh.starting_stacks))]
+    bb = float(max(hh.blinds_or_straddles))
+    start = [float(s) for s in hh.starting_stacks]
+    vpip, pfr, tb, tb_opp = set(), set(), set(), set()
+    raises, preflop, ev, to_call = 0, True, None, 0
+
+    for state, action in hh.state_actions:
+        parts = action.split() if action else []
+        if parts[:2] == ["d", "db"]:
+            preflop = False
+        elif preflop and parts and parts[0].startswith("p"):
+            i, op = int(parts[0][1:]) - 1, parts[1]
+            if raises == 1:
+                tb_opp.add(i)
+            if op == "cbr":
+                vpip.add(i)
+                pfr.add(i)
+                if raises == 1:
+                    tb.add(i)
+                raises += 1
+            elif op == "cc" and to_call:
+                vpip.add(i)
+        if ev is None and state.status:
+            if (pot_ev := allin_ev(state, samples)) is not None:
+                ev = {i: pot_ev[i] - (start[i] - float(state.stacks[i])) for i in range(len(start))}
+        # state는 같은 객체가 변경되며 재사용되므로 다음 액션용 콜 금액을 값으로 저장
+        to_call = state.checking_or_calling_amount if state.actor_index is not None else 0
+
+    for i, name in enumerate(names):
+        s = stats[name]
+        net = (float(state.stacks[i]) - start[i]) / bb
+        s.hands += 1
+        s.net_bb += net
+        s.ev_bb += ev[i] / bb if ev else net
+        s.vpip += i in vpip
+        s.pfr += i in pfr
+        s.threebet += i in tb
+        s.threebet_opp += i in tb_opp
+
+
+def icm(stacks, payouts):
+    """Malmuth-Harville ICM: 칩 스택 → 상금 기대값."""
+    ev = [0.0] * len(stacks)
+
+    def go(remaining, place, prob):
+        if place == len(payouts) or not remaining:
+            return
+        total = sum(stacks[i] for i in remaining)
+        for i in remaining:
+            p = prob * stacks[i] / total
+            ev[i] += p * payouts[place]
+            go(remaining - {i}, place + 1, p)
+
+    # ponytail: 순열 전수탐색 O(n!/(n-k)!), 파이널 테이블(≤9명)까지만 실용적
+    go(frozenset(i for i, s in enumerate(stacks) if s > 0), 0, 1.0)
+    return ev
+
+
+def pct(a, b):
+    return f"{100 * a / b:5.1f}" if b else "    -"
+
+
+def report_hands(path, hero, samples):
+    stats = defaultdict(Stats)
+    for hh in load_hands(path):
+        analyze_hand(hh, stats, samples)
+    rows = [(n, s) for n, s in stats.items() if not hero or n == hero]
+    rows.sort(key=lambda r: -r[1].hands)
+    print(f"{'player':<16}{'hands':>6}{'net bb':>9}{'bb/100':>10}{'EV bb/100':>11}{'VPIP':>6}{'PFR':>6}{'3Bet':>6}")
+    for n, s in rows[:20]:
+        print(
+            f"{n:<16}{s.hands:>6}{s.net_bb:>9.1f}{100 * s.net_bb / s.hands:>10.1f}"
+            f"{100 * s.ev_bb / s.hands:>11.1f}{pct(s.vpip, s.hands):>6}"
+            f"{pct(s.pfr, s.hands):>6}{pct(s.threebet, s.threebet_opp):>6}"
+        )
+
+
+def report_mtt(path):
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    buyin = sum(float(r["buyin"]) for r in rows)
+    prize = sum(float(r["prize"]) for r in rows)
+    itm = sum(float(r["prize"]) > 0 for r in rows)
+    print(f"토너먼트 {len(rows)}개 | 바이인 {buyin:.2f} | 상금 {prize:.2f} | 손익 {prize - buyin:+.2f}")
+    print(f"ROI {pct(prize - buyin, buyin)}% | ITM {pct(itm, len(rows))}%")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    h = sub.add_parser("hands")
+    h.add_argument("path", type=Path)
+    h.add_argument("--hero")
+    h.add_argument("--samples", type=int, default=5000)
+    i = sub.add_parser("icm")
+    i.add_argument("--stacks", type=float, nargs="+", required=True)
+    i.add_argument("--payouts", type=float, nargs="+", required=True)
+    m = sub.add_parser("mtt")
+    m.add_argument("path", type=Path)
+    a = ap.parse_args()
+
+    if a.cmd == "hands":
+        report_hands(a.path, a.hero, a.samples)
+    elif a.cmd == "icm":
+        total = sum(a.stacks)
+        for n, (s, e) in enumerate(zip(a.stacks, icm(a.stacks, a.payouts)), 1):
+            print(f"p{n}: 칩 {s:>9.0f} ({100 * s / total:4.1f}%)  ICM ${e:8.2f} ({100 * e / sum(a.payouts):4.1f}%)")
+    else:
+        report_mtt(a.path)
+
+
+if __name__ == "__main__":
+    main()
