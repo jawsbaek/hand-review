@@ -63,3 +63,17 @@ def test_unreadable_and_unfinished_hands_are_flagged(tmp_path):
     (hh,) = load_hands(unfinished)
     with pytest.raises(ValueError):
         analyze_hand(hh, defaultdict(Stats))
+
+
+def test_fold_to_raise_counts_postflop_raises_only():
+    stats = defaultdict(Stats)
+    for hh in load_hands(S / "postflop" / "postflop_decision.phh"):
+        analyze_hand(hh, stats)
+    # Hero는 플랍 벳(레이즈 아님)에 폴드 → F2R에 안 셈. 프리플랍 레이즈도 제외
+    assert (stats["Hero"].raise_faced, stats["Villain"].raise_faced) == (0, 0)
+
+    for hh in load_hands(S / "postflop" / "fold_to_raise.phh"):
+        analyze_hand(hh, stats)
+    # Villain 벳 → Hero 레이즈 → Villain 폴드
+    assert (stats["Villain"].raise_faced, stats["Villain"].folded_to_raise) == (1, 1)
+    assert stats["Hero"].raise_faced == 0

@@ -1,0 +1,12 @@
+variant = "NT"
+antes = [0, 0]
+blinds_or_straddles = [2, 1]
+min_bet = 2
+starting_stacks = [200, 200]
+players = ["Hero", "Villain"]
+actions = [
+  "d dh p1 AsKs", "d dh p2 7h7d",
+  "p1 cbr 6", "p2 cc",
+  "d db 2c9d4h",
+  "p2 cbr 8", "p1 f",
+]
