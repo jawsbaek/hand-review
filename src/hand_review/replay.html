@@ -418,7 +418,8 @@
         text-align: center;
         transition: opacity 0.18s;
       }
-      .seat.folded .seat-body {
+      .seat.folded .seat-body,
+      .seat.departed .seat-body {
         background: #e0e9e3;
         color: #4a6257;
       }
@@ -1214,6 +1215,21 @@
       function shortCards(cards) {
         return cards.length ? cards.join(" ") : "카드 미확인";
       }
+      function actionText(action) {
+        if (action.name === "RAISE") {
+          return (
+            action.label +
+            " " +
+            amount(action.to) +
+            (action.paid !== action.to
+              ? " (추가 " + amount(action.paid) + ")"
+              : "")
+          );
+        }
+        return (
+          action.label + (action.paid > 0 ? " " + amount(action.paid) : "")
+        );
+      }
       function card(label, hidden = false) {
         const n = el("span", "card");
         if (hidden) {
@@ -1449,6 +1465,7 @@
             "seat" +
               (p.seat === hand().hero.seat ? " hero" : "") +
               (p.folded ? " folded" : "") +
+              (p.departed && !p.all_in ? " departed" : "") +
               (actor === p.seat ? " active" : ""),
           );
           seat.style.left = 50 + 40 * Math.cos(angle) + "%";
@@ -1464,7 +1481,7 @@
           const position = el(
             "div",
             "seat-position",
-            p.position || "좌석 " + p.seat,
+            (p.position || "좌석 " + p.seat) + (p.departed ? " · 이탈" : ""),
           );
           if (p.position === "BTN") position.append(el("span", "dealer", "D"));
           body.append(
@@ -1474,7 +1491,7 @@
           seat.append(body);
           const cards = el("div", "seat-cards");
           if (p.cards.length) p.cards.forEach((c) => cards.append(card(c)));
-          else if (!p.folded) {
+          else if (!p.folded && (!p.departed || p.all_in)) {
             cards.append(card(null, true), card(null, true));
           }
           seat.append(cards);
@@ -1550,6 +1567,9 @@
             spot,
           );
           const choices = el("div", "practice-buttons");
+          const hasPreflopBet =
+            d.stage === "Preflop" &&
+            hand().frames[d.frame].players.some((p) => p.bet > 0);
           for (const [value, label] of d.spot.to_call > 0
             ? [
                 ["FOLD", "폴드"],
@@ -1558,12 +1578,14 @@
               ]
             : [
                 ["CHECK", "체크"],
-                ["BET", "벳"],
+                ...(d.spot.can_raise
+                  ? [[hasPreflopBet ? "RAISE" : "BET", hasPreflopBet ? "레이즈" : "벳"]]
+                  : []),
               ]) {
             const b = el("button", "", label);
             b.onclick = () => {
               answered.set(answerKey(d), label);
-              renderDecision();
+              render();
               $("replay-action")?.focus({ preventScroll: true });
             };
             choices.append(b);
@@ -1601,9 +1623,7 @@
                 : "평가 보류",
           ),
         );
-        const actual =
-          d.action.label +
-          (d.action.paid > 0 ? " " + amount(d.action.paid) : "");
+        const actual = actionText(d.action);
         root.append(
           el(
             "p",
@@ -1701,13 +1721,13 @@
           b.onclick = () => seek(index);
           streets.append(b);
         }
-        $("status").textContent =
-          practice &&
-          h.decisions.some(
-            (d) => d.frame === frame && !answered.has(answerKey(d)),
-          )
-            ? "내 차례입니다. 먼저 액션을 선택해 보세요."
-            : f.label;
+        const practiceDecision =
+          practice && h.decisions.find((d) => d.frame === frame);
+        $("status").textContent = practiceDecision
+          ? answered.has(answerKey(practiceDecision))
+            ? "선택을 기록했습니다. 실제 액션을 재생해 보세요."
+            : "내 차례입니다. 먼저 액션을 선택해 보세요."
+          : f.label;
         $("scrubber").max = h.frames.length - 1;
         $("scrubber").value = frame;
         $("progress").textContent = frame + " / " + (h.frames.length - 1);
@@ -1724,14 +1744,7 @@
             p = x.players.find((p) => p.seat === x.action.seat);
           row.append(
             el("span", "log-actor", p.seat === h.hero.seat ? "나" : p.nick),
-            el(
-              "span",
-              "",
-              x.stage +
-                " · " +
-                x.action.label +
-                (x.action.paid > 0 ? " " + amount(x.action.paid) : ""),
-            ),
+            el("span", "", x.stage + " · " + actionText(x.action)),
           );
           log.append(row);
         });

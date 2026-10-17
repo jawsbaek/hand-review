@@ -83,6 +83,8 @@ Keep real exports and generated reports local; both are gitignored (only the syn
 - Filter **blunder / best candidates**, review decisions or unscored decisions. One hand can contain both good and questionable actions.
 - Switch to practice mode to choose before seeing the recorded action and review. This compares choices and then resumes the real history; it does not simulate an alternative continuation.
 - Results stay hidden by default. Future board cards and opponent cards remain hidden until their replay point; exported opponent reveals appear only at the end.
+- Table departures retain their recorded contributions. Departed players leave the action count, while departed all-in players remain eligible for pots. A new occupant does not replace the previous hand participant.
+- Raises display the total street amount and, when different, the extra payment separately (for example, raise to 3 BB, adding 2 BB from the big blind).
 
 Without explicit solver ranges, classifications are conservative **heuristic candidates**, not GTO verdicts or invented EVs. Unsupported decisions remain unscored. The report describes each rule and its limits. Net is the exported stack-boundary difference and may include top-ups; pot collection events are never treated as payouts. Missing starts, contradictory payments, incomplete records and mixed hand boundaries are flagged. Suit 4 retains its original `/s4` display; its internal `s` solver token is only a consistent suit mapping.
 

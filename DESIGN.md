@@ -237,6 +237,8 @@ Default buttons are white with a thin divider-colored border, semibold text and 
 
 Interactive buttons, fields, selects and disclosure summaries share a visible amber focus outline (3px, offset 3px). Filter and street controls have compact component-specific heights. Re-rendered controls preserve keyboard focus, and practice submission moves focus to the resulting replay action.
 
+Practice choices use the default button treatment. With no call cost, visible preflop bets produce check and raise choices; an unopened street produces check and bet choices. The raise or bet choice is omitted when raising is unavailable. The status line changes from a choice prompt to a recorded-choice confirmation after selection.
+
 ### Inputs / Fields
 
 Search and select controls have white surfaces, thin borders, field corners, padding of 7px by 9px and a minimum height of 38px. Search fills its column. Range controls and checkboxes use the primary green accent. Header selects use the darker header treatment; the speed select is a smaller transport variant.
@@ -253,11 +255,13 @@ Library entries are full-width button rows, with a two-column heading area and a
 
 Supporting regions use ground or pale surface fills and divider lines; they are not shadowed floating cards. The decision inspector pairs short headings with explanation text, a two-column numeric summary and optional tabular analysis. Action logs scroll independently and emphasize the current action with green bold text.
 
+Recorded raise copy names the street total, followed by the additional payment in parentheses when the amounts differ. The same wording appears in the decision inspector and action log.
+
 ### Playing Cards and Seats
 
 Board cards are white rank-and-suit tiles. Known red suits use Card Red. The unknown suit remains a literal `/s4`, with reduced suffix text. Opponent card backs use a solid border; unrevealed board slots use a dashed border. Neither hidden state implies an unknown future value.
 
-Seat labels use pale fills and compact text. The reviewing player's label has a warm border; the active seat has an additional outline. Folded seats shift to a muted surface and text. Separate contribution labels use tabular values.
+Seat labels use pale fills and compact text. The reviewing player's label has a warm border; the active seat has an additional outline. Folded seats and departed seats that are not all in share the muted surface and text. Departed seats append `이탈` to the position label. A departed all-in seat keeps the live treatment, `ALL IN` stack label and card backs until its cards are revealed. Separate contribution labels use tabular values.
 
 Street changes trigger a brief card-deal motion (0.3s); seat opacity transitions last 0.18s. The reduced-motion preference disables both animations and transitions.
 

@@ -100,6 +100,69 @@ def test_only_committed_payments_change_chips_and_snapshots_are_independent():
     assert hand["decisions"][-1]["action"]["name"] == "RAISE"
 
 
+def test_big_blind_option_bet_is_a_raise_to_the_total_street_amount():
+    raw = synthetic_hand()
+    raw["hero"]["seat"], raw["hero"]["nick"] = 1, "Player1"
+    raw["actions"] = [
+        event("GS_SMALL_BLIND", 0, 1, 99, 1),
+        event("GS_BIG_BLIND", 1, 2, 98, 2),
+        event("GS_CALL", 2, 2, 98, 2),
+        event("GS_CALL", 0, 1, 98, 2),
+        event("GS_BET", 1, 4, 94, 6),
+        event("GS_FOLD", 2, stack=98),
+        event("GS_FOLD", 0, stack=98),
+        event("HAND_FINISHED"),
+    ]
+    raw["board"], raw["showdown"], raw["pot"], raw["net"] = [], [], 6, 4
+    hand = replay_hand(raw, 1)
+    (d,) = hand["decisions"]
+    assert d["context"]["to_call"] == 0
+    assert d["action"] == {"seat": 1, "name": "RAISE", "label": "레이즈", "paid": 4, "to": 6}
+    assert "레이즈" in hand["frames"][d["action_frame"]]["label"]
+
+
+@pytest.mark.parametrize("all_in,active", [(False, 2), (True, 3)])
+def test_departed_players_keep_contributions_and_all_in_pot_eligibility(all_in, active):
+    raw = synthetic_hand()
+    preflop = raw["actions"][:7]
+    if all_in:
+        preflop[3] = event("GS_CALL", 2, 2, 0, 2)
+    newcomer = event("GS_NEW_PLAYER", 2, stack=1000)
+    newcomer["nick"] = "Replacement"
+    raw["actions"] = preflop + [
+        event("GS_STANDUP_DESK", 2),
+        newcomer,
+        event("GS_FLOP", stage="Flop"),
+        event("GS_CHECK", 0, stack=98, stage="Flop"),
+        event("GS_BET", 1, 4, 94, 4, "Flop"),
+        event("GS_CALL", 0, 4, 94, 4, "Flop"),
+        event("HAND_FINISHED", stage="Flop"),
+    ]
+    raw["pot"], raw["net"] = 14, 8
+    hand = replay_hand(raw, 1)
+    flop = next(d for d in hand["decisions"] if d["stage"] == "Flop")
+    assert flop["context"]["active"] == active
+    assert (flop["context"]["street"] is not None) == (not all_in)
+    departure = next(f for f in hand["frames"] if f.get("action", {}) and f["action"]["name"] == "LEAVE")
+    departed = next(p for p in departure["players"] if p["seat"] == 2)
+    assert departed["departed"] and not departed["folded"]
+    assert departed["total"] == 2 and departure["pot"] == 6
+    assert departed["all_in"] == all_in
+    assert departed["stack"] == (0 if all_in else 98)
+    assert hand["frames"][-1]["pot"] == 14
+    assert hand["frames"][-1]["players"][2]["nick"] == "Player2"
+
+
+def test_departure_with_unknown_stack_does_not_create_confident_grades():
+    raw = synthetic_hand()
+    del raw["actions"][3]["attrs"]["D_AMOUNT"]
+    raw["actions"].insert(7, event("GS_STANDUP_DESK", 2))
+    raw["actions"] = [a for i, a in enumerate(raw["actions"]) if not (i > 7 and a["who"] == 2)]
+    hand = review_hand(replay_hand(raw, 1))
+    assert any("이탈" in w and "스택" in w for w in hand["warnings"])
+    assert all(d["review"]["grade"] == "unscored" for d in hand["decisions"])
+
+
 def test_replay_never_shows_future_board_or_opponent_cards():
     hand = replay_hand(synthetic_hand(), 1)
     for frame in hand["frames"]:
@@ -313,3 +376,8 @@ def test_public_demo_covers_both_candidate_filters_with_valid_synthetic_hands():
     report = build_report(Path(__file__).parents[1] / "samples/pokerist/demo.jsonl")
     assert not report["errors"] and all(not h["warnings"] for h in report["hands"])
     assert report["grades"]["blunder"] > 0 and report["grades"]["best"] > 0
+    assert any(
+        d["stage"] == "Preflop" and d["spot"]["to_call"] == 0 and d["action"]["name"] == "RAISE"
+        for h in report["hands"]
+        for d in h["decisions"]
+    )

@@ -54,6 +54,11 @@ def _seat(value):
     return int(n)
 
 
+def _eligible(player):
+    """A departed all-in player still contests pots; a departed live stack does not."""
+    return not player["folded"] and (not player["departed"] or player["all_in"])
+
+
 def _validate(raw):
     if not isinstance(raw, dict) or raw.get("kind") != "pokerist-hand":
         raise ValueError("pokerist-hand 레코드가 아님")
@@ -178,6 +183,7 @@ def replay_hand(raw, number):
                 "bet": 0.0,
                 "total": 0.0,
                 "folded": False,
+                "departed": False,
                 "all_in": False,
                 "cards": [],
             }
@@ -191,6 +197,7 @@ def replay_hand(raw, number):
             "bet": 0.0,
             "total": 0.0,
             "folded": False,
+            "departed": False,
             "all_in": False,
             "cards": [],
         },
@@ -247,7 +254,7 @@ def replay_hand(raw, number):
         stage = new
         for p in players.values():
             p["bet"] = 0.0
-        active = [p for p in players.values() if not p["folded"]]
+        active = [p for p in players.values() if _eligible(p)]
         street_context = None
         if len(active) == 2 and all(p["stack"] is not None and p["stack"] > 0 for p in active) and bb:
             street_context = {
@@ -264,6 +271,20 @@ def replay_hand(raw, number):
         event, attrs = a["event"], a.get("attrs", {})
         if event in DEALS:
             change_street(DEALS[event])
+        if event == "GS_STANDUP_DESK" and a.get("who") is not None:
+            player = players.get(int(a["who"]))
+            if player is not None and not player["departed"]:
+                change_street(a["stage"])
+                player["departed"] = True
+                if player["stack"] is None:
+                    warnings.append("자리 이탈 시 남은 스택을 확인할 수 없어 자동 평가를 보류합니다.")
+                    trustworthy = False
+                label = "자리 이탈 · 올인 유지" if player["all_in"] else "자리 이탈"
+                snapshot(
+                    f"{player['nick']} · {label}",
+                    {"seat": player["seat"], "name": "LEAVE", "label": label, "paid": 0.0, "to": player["bet"]},
+                )
+            continue
         if event not in MONEY | CHOICES or attrs.get("STATUS") != "2" or a.get("who") is None:
             continue
         change_street(a["stage"])
@@ -279,8 +300,10 @@ def replay_hand(raw, number):
                 trustworthy = False
             target = float(attrs["T_S_AMOUNT"])
         is_raise = event in {"GS_BET", "GS_RAISE"} and target > max(x["bet"] for x in players.values())
-        name = "RAISE" if is_raise and to_call else "BET" if is_raise else event.removeprefix("GS_")
-        action = {"seat": p["seat"], "name": name, "label": LABELS[event], "paid": paid, "to": target}
+        raises_existing_bet = to_call > 0 or (stage == "Preflop" and max(x["bet"] for x in players.values()) > 0)
+        name = "RAISE" if is_raise and raises_existing_bet else "BET" if is_raise else event.removeprefix("GS_")
+        label = LABELS.get(f"GS_{name}", LABELS[event])
+        action = {"seat": p["seat"], "name": name, "label": label, "paid": paid, "to": target}
         if event in CHOICES:
             if street_context and street_context["oop"] is None:
                 street_context["oop"] = p["seat"]
@@ -303,7 +326,7 @@ def replay_hand(raw, number):
                             "to_call": to_call,
                             "stack": p["stack"],
                             "raises": raises,
-                            "active": sum(not x["folded"] for x in players.values()),
+                            "active": sum(_eligible(x) for x in players.values()),
                             "trustworthy": trustworthy,
                             "street": copy.deepcopy(street_context),
                         },
@@ -328,7 +351,7 @@ def replay_hand(raw, number):
             p["all_in"] = p["stack"] == 0
         p["folded"] |= event == "GS_FOLD"
         raises += is_raise and stage == "Preflop"
-        snapshot(f"{p['nick']} · {LABELS[event]}", action)
+        snapshot(f"{p['nick']} · {label}", action)
 
     if finished:
         # Exported showdown cards have no reliable per-card reveal timestamps.

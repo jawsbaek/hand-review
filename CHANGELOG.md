@@ -9,6 +9,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Conservative pre-action review explanations and optional real heads-up turn/river solver EV comparisons using explicit ranges; unsupported or unreliable decisions remain unscored.
 - Synthetic Pokerist examples, import/accounting/boundary/solver regression tests and desktop/mobile browser checks in CI.
 
+### Fixed
+- Pokerist departures now remove non-all-in players from action counts while preserving contributions, all-in pot eligibility and original seat identity.
+- A big-blind option bet is shown as a raise, with the total street amount separated from the additional payment.
+- Practice mode updates its instruction after a choice is submitted.
+- Practice mode offers check/raise for a big-blind option instead of check/bet.
+
 ## [0.3.0] - 2026-10-17
 
 ### Added

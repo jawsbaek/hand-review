@@ -108,6 +108,18 @@ try {
   if (firstHand.frames[0].pot !== null)
     assert.ok((await page.locator("#pot").textContent()).includes("칩"));
   await page.locator("#unit").selectOption("bb");
+  // A raise names its total street amount; an existing contribution is shown
+  // separately instead of being mistaken for a smaller raise-to amount.
+  const priorContribution = data.hands
+    .flatMap((h, hi) => h.decisions.map((d, di) => ({ hi, di, d })))
+    .find(
+      ({ d }) => d.action.name === "RAISE" && d.action.to !== d.action.paid,
+    );
+  if (priorContribution) {
+    await page.evaluate(({ hi, di }) => chooseHand(hi, di), priorContribution);
+    assert.ok((await page.locator("#decision").textContent()).includes("추가"));
+  }
+  await page.locator(".hand-row").first().click();
 
   // Practice must stop at the first unanswered decision, even when scrubbing
   // straight to the end. Actual actions/grades remain hidden until a choice.
@@ -125,7 +137,9 @@ try {
     assert.equal(await page.locator("#decision .badge").count(), 0);
     assert.equal(
       await page.locator(".practice-buttons button").count(),
-      firstDecision.spot.to_call > 0 && firstDecision.spot.can_raise ? 3 : 2,
+      firstDecision.spot.to_call > 0
+        ? firstDecision.spot.can_raise ? 3 : 2
+        : firstDecision.spot.can_raise ? 2 : 1,
     );
     await page.locator(".practice-buttons button").first().focus();
     await page.keyboard.press("Enter");
@@ -136,6 +150,11 @@ try {
     assert.equal(await page.locator("#decision .badge").count(), 1);
     assert.ok(
       (await page.locator("#decision").textContent()).includes("내 선택:"),
+    );
+    assert.ok(
+      (await page.locator("#status").textContent()).includes(
+        "선택을 기록했습니다",
+      ),
     );
     await page.getByRole("button", { name: "기록된 액션 재생" }).click();
     assert.equal(await page.evaluate(() => document.activeElement.id), "next");
@@ -155,6 +174,25 @@ try {
       "재생",
     );
     assert.equal(await page.locator("#decision .badge").count(), 0);
+  }
+  // The big blind can check or raise an existing blind; an unopened postflop
+  // street offers check/bet. Derive expectations from the visible frame.
+  const freeOptions = data.hands.flatMap((h, hi) =>
+    h.decisions.map((d, di) => ({ h, hi, d, di })),
+  );
+  for (const preflop of [true, false]) {
+    const option = freeOptions.find(({ h, d }) =>
+      d.spot.to_call === 0 && d.spot.can_raise &&
+      (d.stage === "Preflop") === preflop &&
+      (!preflop || h.frames[d.frame].players.some((p) => p.bet > 0)),
+    );
+    if (!option) continue;
+    await page.evaluate(({ hi, di }) => chooseHand(hi, di), option);
+    assert.equal(await page.locator("#decision .badge").count(), 0);
+    assert.deepEqual(
+      await page.locator(".practice-buttons button").allTextContents(),
+      ["체크", preflop ? "레이즈" : "벳"],
+    );
   }
   await page.locator("#mode").selectOption("review");
   await page.locator("#restart").click();
