@@ -51,6 +51,23 @@ fn pot_now(game: &PostFlopGame) -> i32 {
     game.tree_config().starting_pot + a + b
 }
 
+/// Prune before solving, including both players and later streets. Filtering
+/// output alone would leave illegal bets influencing the equilibrium.
+fn enforce_minimum_bet(tree: &mut ActionTree, minimum: i32) {
+    if tree.is_terminal_node() {
+        return;
+    }
+    for action in tree.available_actions().to_vec() {
+        if matches!(action, Action::Bet(amount) if amount < minimum) {
+            tree.remove_action(action).unwrap();
+        } else {
+            tree.play(action).unwrap();
+            enforce_minimum_bet(tree, minimum);
+            tree.undo().unwrap();
+        }
+    }
+}
+
 fn main() {
     let mut buf = String::new();
     std::io::stdin().read_to_string(&mut buf).unwrap();
@@ -72,10 +89,15 @@ fn main() {
         turn: *board.get(3).unwrap_or(&NOT_DEALT),
         river: *board.get(4).unwrap_or(&NOT_DEALT),
     };
+    let minimum_bet = q["min_bet"].as_i64().unwrap_or(0) as i32;
+    assert!(minimum_bet >= 0, "min_bet must be nonnegative");
     // 스트리트별 사이즈 (turn_/river_bet_sizes 없으면 bet_sizes 재사용), 레이즈는 공통
     let street = |k: &str| {
         let b = q[k].as_str().unwrap_or(s(&q, "bet_sizes"));
-        let o = BetSizeOptions::try_from((b, s(&q, "raise_sizes"))).unwrap();
+        let mut o = BetSizeOptions::try_from((b, s(&q, "raise_sizes"))).unwrap();
+        if minimum_bet > 0 {
+            o.bet.push(BetSize::Additive(minimum_bet, 0));
+        }
         [o.clone(), o]
     };
     let tree_config = TreeConfig {
@@ -97,7 +119,10 @@ fn main() {
     };
 
     let t0 = Instant::now();
-    let tree = ActionTree::new(tree_config).unwrap();
+    let mut tree = ActionTree::new(tree_config).unwrap();
+    if minimum_bet > 0 {
+        enforce_minimum_bet(&mut tree, minimum_bet);
+    }
     let mut game = PostFlopGame::with_config(card_config, tree).unwrap();
 
     // 콤보 검증은 솔브 전에 (플랍은 솔브가 수십 초)
@@ -229,7 +254,8 @@ fn main() {
                 Action::Fold => ("FOLD", street_bets[player]),
                 _ => ("UNKNOWN", street_bets[player]),
             };
-            json!({"kind": kind, "to": to, "paid": (to - street_bets[player]).max(0)})
+            json!({"kind": kind, "to": to, "paid": (to - street_bets[player]).max(0),
+                "is_all_in": matches!(a, Action::AllIn(_))})
         })
         .collect();
     let action_names: Vec<String> = actions.iter().map(|a| name(a, pot)).collect();
@@ -257,6 +283,7 @@ fn main() {
         "evs": evs,
         "strategy": strategy,
         "amounts": amounts,
+        "min_bet": minimum_bet,
         "responses": responses,
         "constrained": q["locks"].as_array().is_some_and(|locks| !locks.is_empty()),
         "pot": pot,
@@ -265,4 +292,72 @@ fn main() {
         "mem_bytes": mem,
     });
     println!("{out}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn small_tree(state: BoardState, stack: i32) -> ActionTree {
+        let sizes = BetSizeOptions::try_from(("25%,50%,100c", "2x")).unwrap();
+        ActionTree::new(TreeConfig {
+            initial_state: state,
+            starting_pot: 200,
+            effective_stack: stack,
+            flop_bet_sizes: [sizes.clone(), sizes.clone()],
+            turn_bet_sizes: [sizes.clone(), sizes.clone()],
+            river_bet_sizes: [sizes.clone(), sizes],
+            add_allin_threshold: 1.5,
+            force_allin_threshold: 0.0,
+            merging_threshold: 0.0,
+            ..Default::default()
+        })
+        .unwrap()
+    }
+
+    fn assert_legal_bets(tree: &mut ActionTree) -> usize {
+        if tree.is_terminal_node() {
+            return 0;
+        }
+        let mut checked = 1;
+        for action in tree.available_actions().to_vec() {
+            if let Action::Bet(amount) = action {
+                assert!(amount >= 100, "sub-BB ordinary bet: {amount}");
+            }
+            tree.play(action).unwrap();
+            checked += assert_legal_bets(tree);
+            tree.undo().unwrap();
+        }
+        checked
+    }
+
+    #[test]
+    fn minimum_applies_to_both_players_and_every_future_street() {
+        let mut tree = small_tree(BoardState::Flop, 300);
+        assert!(tree.available_actions().contains(&Action::Bet(50)));
+        enforce_minimum_bet(&mut tree, 100);
+        assert!(assert_legal_bets(&mut tree) > 20);
+        for _street in 0..3 {
+            assert!(tree.available_actions().contains(&Action::Bet(100)));
+            tree.play(Action::Check).unwrap();
+            assert!(tree.available_actions().contains(&Action::Bet(100)));
+            tree.play(Action::Check).unwrap();
+        }
+        assert!(tree.is_terminal_node());
+    }
+
+    #[test]
+    fn short_stack_all_in_is_preserved_below_the_minimum() {
+        let mut tree = small_tree(BoardState::River, 50);
+        enforce_minimum_bet(&mut tree, 100);
+        assert_eq!(
+            tree.available_actions(),
+            &[Action::Check, Action::AllIn(50)]
+        );
+        tree.play(Action::Check).unwrap();
+        assert_eq!(
+            tree.available_actions(),
+            &[Action::Check, Action::AllIn(50)]
+        );
+    }
 }

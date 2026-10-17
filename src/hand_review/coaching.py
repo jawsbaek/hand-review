@@ -19,7 +19,7 @@ import re
 
 from hand_review.pokerist import canonical_card
 
-VERSION = "response-checkdown-v1"
+VERSION = "response-checkdown-v2"
 RANKS, SUITS = "23456789TJQKA", "hdcs"
 POSITIONS = {p: i for i, p in enumerate(("SB", "BB", "UTG", "UTG+1", "UTG+2", "MP", "LJ", "HJ", "CO", "BTN"))}
 FRACTIONS = (0.25, 0.5, 0.75, 1.0, 1.5)
@@ -319,6 +319,7 @@ def _rollout(context, chosen, holes, ranks, draws, shift):
         p["all_in"] = p["stack"] < 1e-8
         return amount
 
+    acted_at = {seat: by_seat[seat]["bet"] for seat in context["acted"]}
     pay(h, spent)
     high = max(p["bet"] for p in players)
     previous_high = h["bet"] - spent + context["to_call"]
@@ -342,6 +343,7 @@ def _rollout(context, chosen, holes, ranks, draws, shift):
     cursor, escalations, turns = order.index(hero), 0, 0
     last_raise = max(bb, context["min_raise_to"] - (h["bet"] - spent + context["to_call"]))
     last_raise = max(last_raise, high - previous_high)
+    acted_at[hero] = high
     while pending and turns < 4 * len(order):
         cursor = (cursor + 1) % len(order)
         seat = order[cursor]
@@ -364,7 +366,10 @@ def _rollout(context, chosen, holes, ranks, draws, shift):
             else next(x["seat"] for x in remaining if x["seat"] != seat)
         )
         equity = policy_equity(holes[seat], board, context["policy_ranges"][str(target)]) ** (len(remaining) - 1)
-        odds = cost / (pot + cost) if cost else 0.0
+        # Contributions above this caller's final total belong to side pots
+        # it cannot win. Folded players' covered contributions remain dead money.
+        eligible_after_call = cost + sum(min(x["total"], p["total"] + cost) for x in players)
+        odds = cost / eligible_after_call if cost else 0.0
         u = draws[seat][min(escalations, 2)]
         if cost:
             fold = 1 / (1 + math.exp(max(-50, min(50, 20 * (equity - odds - 0.025)))))
@@ -373,19 +378,22 @@ def _rollout(context, chosen, holes, ranks, draws, shift):
                 p["folded"] = True
                 continue
         able = any(x["seat"] != seat and not x["folded"] and x["stack"] > 0 for x in live)
-        aggressive = seat != hero and able and escalations < 1 and equity > 0.68
+        reopened = seat not in acted_at or high - acted_at[seat] >= last_raise - 1e-8
+        aggressive = seat != hero and able and reopened and escalations < 1 and equity > 0.68
         aggressive &= u > 0.75 if cost else u > 0.5
         minimum = high + last_raise - p["bet"]
-        if aggressive and p["stack"] > max(cost, minimum):
+        if aggressive and p["stack"] > cost:
             old = high
             pay(p, max(minimum, cost + 0.75 * (pot + cost)))
             high = p["bet"]
-            last_raise = max(last_raise, high - old)
+            if high - old >= last_raise - 1e-8:
+                last_raise = high - old
             escalations += 1
             aggressor = seat
             pending = {x["seat"] for x in live if x["seat"] != seat and not x["folded"] and x["stack"] > 0}
         else:
             pay(p, cost)
+        acted_at[seat] = high
         if seat == hero:
             spent = h["total"] - next(x["total"] for x in context["players"] if x["seat"] == hero)
     if pending:

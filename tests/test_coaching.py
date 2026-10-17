@@ -10,10 +10,10 @@ import pytest
 from pokerkit import StandardHighHand
 
 from hand_review import ev_engine
-from hand_review.coaching import _rollout, _settle, candidates, card_id, estimate, parse_range, rank7
+from hand_review.coaching import _rollout, _settle, action, candidates, card_id, estimate, parse_range, rank7
 from hand_review.pokerist import player_key, replay_hand
 from hand_review.profiles import Evidence
-from hand_review.recommendations import AnalysisOptions, analyze, shifted_locks
+from hand_review.recommendations import AnalysisOptions, analyze, shifted_locks, solve_recommendation
 
 
 def cards(ids):
@@ -157,6 +157,153 @@ def test_minimum_raise_exceeding_matching_stack_keeps_legal_amount_and_returns_e
     assert _rollout(c, raises[0], holes, {0: 1, 1: 2}, draws, 0) == -11
     c["players"][0]["stack"] = 15
     assert next(a for a in candidates(c) if a["kind"] == "RAISE")["to_bb"] == 15
+
+
+def betting_player(seat, position, stack, bet, total=None):
+    return {
+        "seat": seat,
+        "position": position,
+        "stack": stack,
+        "bet": bet,
+        "total": bet if total is None else total,
+        "all_in": stack == 0,
+        "folded": False,
+        "departed": False,
+    }
+
+
+def river_world():
+    board = tuple(map(card_id, ("2h", "3d", "4c", "8s", "9h")))
+    holes = {
+        0: tuple(map(card_id, ("9d", "9c"))),
+        1: tuple(map(card_id, ("8d", "8c"))),
+        2: tuple(map(card_id, ("As", "Ah"))),
+    }
+    ranks = {seat: rank7(tuple(sorted(own + board))) for seat, own in holes.items()}
+    return holes, ranks
+
+
+@pytest.mark.parametrize(("all_in_to", "expected"), [(125, 350), (200, 950)])
+def test_opponent_can_reraise_only_when_a_full_raise_reopens_its_action(all_in_to, expected):
+    c = context()
+    c.update(
+        cards=["9♦", "9♣"],
+        board=["2♥", "3♦", "4♣", "8/s4", "9♥"],
+        pot=200 + all_in_to,
+        stack=900,
+        active=3,
+        to_call=all_in_to - 100,
+        min_raise_to=all_in_to + 100,
+        raise_reopened=all_in_to >= 200,
+        acted=[0, 1, 2],
+        history=[{"seat": 2, "stage": "River", "name": "RAISE"}],
+        policy_ranges={"0": "random", "1": "random", "2": "random"},
+        players=[
+            betting_player(0, "SB", 900, 100),
+            betting_player(1, "BB", 900, 100),
+            betting_player(2, "BTN", 0, all_in_to),
+        ],
+    )
+    chosen = next(a for a in candidates(c) if a["kind"] == "CALL")
+    holes, ranks = river_world()
+    # SB bet 100, BB called, BTN shoved. Hero always wins this fixed runout.
+    # A shove to 125 leaves BB only call/fold; a full raise to 200 reopens it.
+    assert _rollout(c, chosen, holes, ranks, {s: (1, 1, 1) for s in holes}, 0) == expected
+
+
+def test_short_caller_uses_only_the_pot_it_can_win_when_deciding_to_call():
+    c = context()
+    c.update(
+        cards=["9♦", "9♣"],
+        board=["2♥", "3♦", "4♣", "8/s4", "9♥"],
+        pot=1003,
+        stack=2000,
+        active=3,
+        to_call=1000,
+        min_raise_to=2000,
+        raise_reopened=True,
+        acted=[0, 1, 2],
+        history=[{"seat": 1, "stage": "River", "name": "BET"}],
+        policy_ranges={"0": "random", "1": "random", "2": "random"},
+        players=[
+            betting_player(0, "SB", 2000, 0, 1),
+            betting_player(1, "BTN", 1000, 1000, 1001),
+            betting_player(2, "BB", 10, 0, 1),
+        ],
+    )
+    board = tuple(map(card_id, ("2h", "3d", "4c", "8s", "9h")))
+    holes = {
+        0: tuple(map(card_id, ("9d", "9c"))),
+        1: tuple(map(card_id, ("As", "Ah"))),
+        2: tuple(map(card_id, ("8d", "7d"))),
+    }
+    ranks = {seat: rank7(tuple(sorted(own + board))) for seat, own in holes.items()}
+    # The short BB can win 33 by calling 10, not the deep players' 2013.
+    # This draw folds using 10/33 odds, but calls using the erroneous 10/2013.
+    draws = {s: (0.1, 0.1, 0.1) for s in holes}
+    assert _rollout(c, action("CALL", 1000, 0, 1003, 1), holes, ranks, draws, 0) == 1003
+
+
+def small_heads_up_context(hero_stack=20, opponent_stack=20):
+    c = context()
+    c.update(
+        cards=["A/s4", "A♥"],
+        board=["2/s4", "3♥", "4♦", "6♣", "7♣"],
+        pot=2,
+        stack=hero_stack,
+        to_call=0,
+        min_raise_to=1,
+        players=[betting_player(0, "SB", hero_stack, 0, 1), betting_player(1, "BB", opponent_stack, 0, 1)],
+    )
+    c["street"] = {
+        "board": c["board"],
+        "oop": 0,
+        "players": copy.deepcopy(c["players"]),
+        "pot_bb": 2,
+        "eff_bb": min(hero_stack, opponent_stack),
+        "path": [],
+    }
+    return c
+
+
+@pytest.mark.skipif(not ev_engine.available(), reason="optional Rust engine not built")
+@pytest.mark.parametrize(("hero_stack", "opponent_stack"), [(20, 20), (0.5, 20), (20, 0.5)])
+def test_solver_minimum_bets_respect_real_stacks_and_short_all_in_exceptions(hero_stack, opponent_stack):
+    c = small_heads_up_context(hero_stack, opponent_stack)
+    result = solve_recommendation(
+        c, {"0": "AsAh,QsQh", "1": "KsKh"}, AnalysisOptions(solver_timeout=8, node_locks=False)
+    )
+    assert result["status"] == "ready", result
+    bets = [a for a in result["actions"] if a["kind"] == "BET"]
+    assert bets
+    assert all(min(1, hero_stack) <= a["paid_bb"] <= hero_stack for a in bets)
+    assert min(a["paid_bb"] for a in bets) == min(1, hero_stack)
+    if hero_stack == 20 and opponent_stack == 0.5:
+        assert all(a["uncalled_return_bb"] == 0.5 for a in bets)
+
+
+def test_solver_withholds_results_from_an_engine_without_whole_tree_minimum_support(monkeypatch):
+    # The current node looks legal, but an older engine gives no guarantee about
+    # the opponent's branches or future streets. It must not be labelled ready.
+    monkeypatch.setattr(ev_engine, "available", lambda: True)
+    monkeypatch.setattr(
+        ev_engine,
+        "solve_node",
+        lambda **kwargs: {
+            "actions": ["CHECK"],
+            "amounts": [{"kind": "CHECK", "paid": 0, "to": 0}],
+            "strategy": [1],
+            "ev": {"CHECK": 2},
+            "pot": 2,
+            "exploitability": 0,
+            "solve_ms": 1,
+        },
+    )
+    result = solve_recommendation(
+        small_heads_up_context(), {"0": "AsAh,QsQh", "1": "KsKh"}, AnalysisOptions(node_locks=False)
+    )
+    assert result["status"] == "unavailable"
+    assert "다시 빌드" in result["note"]
 
 
 def test_model_recommendation_does_not_see_result_future_board_or_recorded_action():

@@ -25,6 +25,8 @@ class AnalysisOptions:
 
 
 def _rows(result, context):
+    if result.get("min_bet") != 1:
+        raise ValueError("1BB 최소 베팅을 보장하는 EV 엔진으로 다시 빌드해야 합니다.")
     if len(result.get("amounts", [])) != len(result["actions"]):
         raise ValueError("정확한 금액을 제공하는 EV 엔진으로 다시 빌드해야 합니다.")
     if not math.isfinite(result["exploitability"]) or result["exploitability"] > context["street"]["pot_bb"] * 0.01:
@@ -38,18 +40,34 @@ def _rows(result, context):
         raise ValueError("솔버 빈도의 합이 1이 아닙니다.")
     if abs(result["pot"] - context["pot"] / context["bb"]) > 0.05:
         raise ValueError("이전 액션의 트리 대응으로 팟이 달라져 정확한 사이징 추천을 보류합니다.")
+    hero = next(p for p in context["players"] if p["seat"] == context["hero_seat"])
+    bet, stack = hero["bet"] / context["bb"], hero["stack"] / context["bb"]
     rows = []
     for name, amount, frequency in zip(result["actions"], result["amounts"], probabilities, strict=True):
         ev = result["ev"][name]
         if not math.isfinite(ev):
             raise ValueError("유효한 솔버 EV가 아닙니다.")
+        paid, to = amount["paid"], amount["to"]
+        if amount["kind"] in {"BET", "RAISE"}:
+            minimum = 1 if amount["kind"] == "BET" else context["min_raise_to"] / context["bb"] - bet
+            minimum = min(stack, minimum)
+            if paid < minimum - 1e-8:
+                if not amount.get("is_all_in"):
+                    raise ValueError("솔버 트리에 최소 베팅·레이즈보다 작은 일반 베팅이 있습니다.")
+                # HU solves truncate both stacks to the effective stack. A deep
+                # hero must still announce a legal full bet/raise; its unmatched
+                # excess returns, leaving the solved EV and frequency unchanged.
+                paid, to = minimum, bet + minimum
+            if paid > stack + 1e-8:
+                raise ValueError("솔버 금액이 실제 남은 스택을 초과합니다.")
         rows.append(
             {
                 "kind": amount["kind"],
-                "paid_bb": round(amount["paid"], 4),
-                "to_bb": round(amount["to"], 4),
+                "paid_bb": round(paid, 4),
+                "to_bb": round(to, 4),
+                "uncalled_return_bb": round(paid - amount["paid"], 4),
                 "frequency": frequency,
-                "pot_pct": round(100 * amount["paid"] / result["pot"], 1) if result["pot"] else None,
+                "pot_pct": round(100 * paid / result["pot"], 1) if result["pot"] else None,
                 "ev_bb": ev,
                 "se_bb": None,
                 "engine_action": name,
@@ -129,6 +147,7 @@ def solve_recommendation(context, ranges, options):
         ),
         "raise_sizes": "2x,3x",
         "max_mem_gib": 1.0,
+        "min_bet": 1.0,
         "max_iter": 1000,
         "timeout_seconds": options.solver_timeout,
         "include_responses": options.node_locks,
@@ -189,7 +208,12 @@ def solve_recommendation(context, ranges, options):
             "bet_sizes": params["bet_sizes"],
             "raise_sizes": params["raise_sizes"],
             "note": "수정 가능한 스트리트 시작 레인지와 후보 트리 안의 근사 균형입니다. "
-            "대표 추천은 가장 높은 빈도의 액션입니다.",
+            "대표 추천은 가장 높은 빈도의 액션입니다."
+            + (
+                " 유효 스택보다 큰 미매칭분은 반환되는 합법 선언액으로 표시했습니다."
+                if any(a["uncalled_return_bb"] > 0 for a in rows)
+                else ""
+            ),
             "scenario_note": "가정 실험은 현재 보드의 상대 첫 응답 노드만 고정합니다. "
             "락 상태의 수렴 수치는 자유로운 상대에 대한 손실 보장이 아닙니다.",
         }

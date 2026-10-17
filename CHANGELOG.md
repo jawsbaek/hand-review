@@ -13,6 +13,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Synthetic Pokerist examples, import/accounting/boundary/solver regression tests and desktop/mobile browser checks in CI.
 
 ### Fixed
+- Response simulations track each player's reopening rights after short all-ins and exclude unreachable side pots from call odds.
+- Replay solver trees enforce a 1 BB minimum across both players and all future streets before solving, preserve short all-ins, and return unmatched excess when translating effective-stack actions to legal announced amounts. Older binaries without this guarantee withhold recommendations.
 - Legal minimum raises remain available against short matching stacks; unmatched excess is returned in model payoffs.
 - Range editing labels stale results, preserves newer drafts during calculation, and restores visible keyboard focus after completion or recoverable errors.
 - Pokerist departures now remove non-all-in players from action counts while preserving contributions, all-in pot eligibility and original seat identity.
