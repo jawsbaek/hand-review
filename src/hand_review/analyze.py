@@ -1,10 +1,10 @@
 """포커 핸드 히스토리 분석기: VPIP/PFR/3Bet, bb/100, 올인 EV, ICM, 토너먼트 ROI.
 
 사용법:
-  uv run analyze.py hands <파일|폴더> [--hero 이름]   # .phh / .phhs / PokerStars .txt
-  uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
-  uv run analyze.py mtt tournaments.csv              # date,name,buyin,prize
-  uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv
+  hand-review hands <파일|폴더> [--hero 이름]   # .phh / .phhs / PokerStars .txt
+  hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
+  hand-review mtt tournaments.csv              # date,name,buyin,prize
+  hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv
 """
 
 import argparse
@@ -252,7 +252,7 @@ def report_mtt(path):
 
 
 def run_tui(hands_path=None, hero=None, samples=5000, mtt_path=None, icm_stacks=None, icm_payouts=None):
-    from poker_tui import PokerApp
+    from hand_review.tui import PokerApp
 
     hand_rows, skipped, dups = compute_hand_rows(hands_path, hero, samples) if hands_path else (None, 0, 0)
     mtt_summary = compute_mtt_summary(mtt_path) if mtt_path else None
@@ -264,7 +264,7 @@ def run_tui(hands_path=None, hero=None, samples=5000, mtt_path=None, icm_stacks=
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(prog="hand-review")
     sub = ap.add_subparsers(dest="cmd", required=True)
     h = sub.add_parser("hands")
     h.add_argument("path", type=Path)

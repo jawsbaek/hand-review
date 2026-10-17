@@ -1,4 +1,4 @@
-"""TUI 화면을 SVG로 캡처해 captures/에 저장. `uv run capture.py`로 실행.
+"""TUI 화면을 SVG로 캡처해 captures/에 저장. `uv run scripts/capture.py`로 실행.
 
 렌더링 서버 없이도 리뷰 가능하도록, 캡처한 SVG에서 셀 텍스트를 좌표순으로
 추출해 터미널 화면을 그대로 재구성한 .txt도 같이 남긴다(svg_to_text).
@@ -10,10 +10,11 @@ import re
 import sys
 from pathlib import Path
 
-from analyze import compute_hand_rows, icm
-from poker_tui import PokerApp
+from hand_review.analyze import compute_hand_rows, icm
+from hand_review.tui import PokerApp
 
-OUT = Path(__file__).parent / "captures"
+ROOT = Path(__file__).parent.parent
+OUT = ROOT / "captures"
 
 
 def svg_to_text(svg: str) -> str:
@@ -46,7 +47,7 @@ async def capture(name: str, app: PokerApp, tab_id: str | None = None):
 
 
 async def main():
-    hand_rows, _, _ = compute_hand_rows(Path(__file__).parent / "samples" / "cash", None, 500)
+    hand_rows, _, _ = compute_hand_rows(ROOT / "samples" / "cash", None, 500)
     icm_result = ([5000, 3000, 2000], [50, 30, 20], icm([5000, 3000, 2000], [50, 30, 20]))
     mtt_summary = (3, 100.0, 150.0, 2)
 

@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/) (pre-1.0: interfaces may change).
 
+## [0.2.0] - 2026-10-17
+
+### Changed
+- Renamed project to **hand-review** (was poker-play-analyzer). GitHub redirects the old URL.
+- Installable package with a `hand-review` command (`uvx --from git+https://github.com/jawsbaek/hand-review hand-review ...`). `uv run analyze.py ...` becomes `uv run hand-review ...`.
+- Code moved to `src/hand_review/` (`poker_tui.py` → `tui.py`), tests to `tests/`, `capture.py` to `scripts/`.
+- Solver is installed to `~/.cache/hand-review/solver` (override with `HAND_REVIEW_SOLVER_DIR`) instead of `.solver/` in the repo.
+
 ## [0.1.0] - 2026-10-17
 
 ### Added
@@ -12,4 +20,5 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Textual TUI (`analyze.py tui`) and `capture.py` screen capture
 - TexasSolver wrapper (`solver.py`), checksum-verified installer, range CSV loader
 
-[0.1.0]: https://github.com/jawsbaek/poker-play-analyzer/releases/tag/v0.1.0
+[0.2.0]: https://github.com/jawsbaek/hand-review/releases/tag/v0.2.0
+[0.1.0]: https://github.com/jawsbaek/hand-review/releases/tag/v0.1.0

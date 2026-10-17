@@ -1,6 +1,6 @@
 import asyncio
 
-from poker_tui import PokerApp
+from hand_review.tui import PokerApp
 
 
 def test_renders_with_no_data():

@@ -1,6 +1,6 @@
-# poker-play-analyzer
+# hand-review
 
-[![CI](https://github.com/jawsbaek/poker-play-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/jawsbaek/poker-play-analyzer/actions/workflows/ci.yml)
+[![CI](https://github.com/jawsbaek/hand-review/actions/workflows/ci.yml/badge.svg)](https://github.com/jawsbaek/hand-review/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [한국어](README.ko.md)
@@ -21,11 +21,19 @@ A small command-line analyzer for your own online poker hand histories, built on
 
 Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+. CLI and TUI output is in Korean (labels such as `칩` = chips, `토너먼트` = tournaments, `건너뜀` = skipped).
 
+Try it without installing:
+
 ```sh
-git clone https://github.com/jawsbaek/poker-play-analyzer.git
-cd poker-play-analyzer
+uvx --from git+https://github.com/jawsbaek/hand-review hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
+```
+
+Or install the `hand-review` command (`uv tool install git+https://github.com/jawsbaek/hand-review`), or work from a clone with the sample hands:
+
+```sh
+git clone https://github.com/jawsbaek/hand-review.git
+cd hand-review
 uv sync
-uv run analyze.py hands samples/cash
+uv run hand-review hands samples/cash
 ```
 
 ```
@@ -38,11 +46,13 @@ Villain2             1   -100.0  -10000.0    -6298.8 100.0 100.0 100.0
 
 ## Usage
 
+From a clone, prefix with `uv run`.
+
 ```sh
-uv run analyze.py hands <file|folder> [--hero NAME] [--samples 5000]
-uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
-uv run analyze.py mtt samples/mtt/tournaments.csv
-uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
+hand-review hands <file|folder> [--hero NAME] [--samples 5000]
+hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
+hand-review mtt samples/mtt/tournaments.csv
+hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
 ```
 
 `--samples` is the Monte Carlo sample count for all-in equity. Hands that cannot be read, use an unsupported variant, or are cut off are skipped and counted at the end of the report; duplicate hands are counted once.
@@ -58,22 +68,23 @@ uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv --s
 ### Solver (optional)
 
 ```sh
-./scripts/setup_solver.sh   # needs curl, shasum, unzip; downloads TexasSolver v0.2.0 into .solver/ and verifies its SHA-256
-uv run solver.py            # self-check: solves a small flop spot
+./scripts/setup_solver.sh   # needs curl, shasum, unzip; downloads TexasSolver v0.2.0 into ~/.cache/hand-review/solver and verifies its SHA-256
+uv run python -m hand_review.solver   # self-check: solves a small flop spot
 ```
 
-On Apple Silicon the macOS build runs under Rosetta (`softwareupdate --install-rosetta`).
+Set `HAND_REVIEW_SOLVER_DIR` to install or look for the solver elsewhere. On Apple Silicon the macOS build runs under Rosetta (`softwareupdate --install-rosetta`).
 `ranges.py` converts PioSOLVER-style `hand,weight` CSV ranges into TexasSolver range strings.
 
 ## How it works
 
 | File | Role |
 |---|---|
-| `analyze.py` | CLI. Loads hands, replays them with PokerKit, aggregates stats, ICM, MTT ROI |
-| `poker_tui.py` | Textual app showing the same results in tabs |
-| `capture.py` | Renders TUI screens to `captures/*.svg` + `.txt` for review |
-| `solver.py` | Runs TexasSolver as a subprocess and returns its strategy tree |
-| `ranges.py` | Range CSV → solver range string |
+| `src/hand_review/analyze.py` | CLI (`hand-review`). Loads hands, replays them with PokerKit, aggregates stats, ICM, MTT ROI |
+| `src/hand_review/tui.py` | Textual app showing the same results in tabs |
+| `src/hand_review/solver.py` | Runs TexasSolver as a subprocess and returns its strategy tree |
+| `src/hand_review/ranges.py` | Range CSV → solver range string |
+| `scripts/capture.py` | Renders TUI screens to `captures/*.svg` + `.txt` for review |
+| `scripts/setup_solver.sh` | Downloads and verifies TexasSolver |
 
 Flow for `hands`: `load_hands` (PHH / PokerStars parser, with rake and ante fixes) → `reveal_shown_cards` (puts showdown cards back into the deal so all-in equity can be computed) → `analyze_hand` replays each action, records preflop stats, and computes pot equity at the first all-in → `Stats` per player → table.
 

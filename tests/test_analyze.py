@@ -1,9 +1,9 @@
 from collections import defaultdict
 from pathlib import Path
 
-from analyze import Stats, analyze_hand, icm, load_hands
+from hand_review.analyze import Stats, analyze_hand, icm, load_hands
 
-S = Path(__file__).parent / "samples"
+S = Path(__file__).parent.parent / "samples"
 
 
 def test_allin_ev_and_preflop_stats():

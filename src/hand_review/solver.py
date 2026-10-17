@@ -1,18 +1,20 @@
 """TexasSolver(CFR 솔버) 서브프로세스 래퍼.
 
-사전 준비: ./scripts/setup_solver.sh 로 .solver/console_solver 설치.
+사전 준비: ./scripts/setup_solver.sh 로 ~/.cache/hand-review/solver 에 설치
+(위치는 HAND_REVIEW_SOLVER_DIR 환경변수로 변경).
 
 사용법(데모):
-  uv run solver.py
+  uv run python -m hand_review.solver
 """
 
 import json
+import os
 import platform
 import subprocess
 import tempfile
 from pathlib import Path
 
-SOLVER_DIR = Path(__file__).parent / ".solver"
+SOLVER_DIR = Path(os.environ.get("HAND_REVIEW_SOLVER_DIR", Path.home() / ".cache" / "hand-review" / "solver"))
 BINARY = SOLVER_DIR / "console_solver"
 
 

@@ -1,4 +1,4 @@
-# poker-play-analyzer
+# hand-review
 
 [English](README.md)
 
@@ -18,20 +18,30 @@
 
 [uv](https://docs.astral.sh/uv/)와 Python 3.12 이상이 필요합니다.
 
+설치 없이 바로 실행:
+
 ```sh
-git clone https://github.com/jawsbaek/poker-play-analyzer.git
-cd poker-play-analyzer
+uvx --from git+https://github.com/jawsbaek/hand-review hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
+```
+
+`hand-review` 명령을 설치하려면 `uv tool install git+https://github.com/jawsbaek/hand-review`, 샘플 핸드로 해보려면 clone:
+
+```sh
+git clone https://github.com/jawsbaek/hand-review.git
+cd hand-review
 uv sync
-uv run analyze.py hands samples/cash
+uv run hand-review hands samples/cash
 ```
 
 ## 사용법
 
+clone한 폴더에서는 앞에 `uv run`을 붙이세요.
+
 ```sh
-uv run analyze.py hands <파일|폴더> [--hero 이름] [--samples 5000]
-uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
-uv run analyze.py mtt samples/mtt/tournaments.csv
-uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
+hand-review hands <파일|폴더> [--hero 이름] [--samples 5000]
+hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
+hand-review mtt samples/mtt/tournaments.csv
+hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
 ```
 
 `--samples`는 올인 equity 몬테카를로 샘플 수입니다. 읽을 수 없거나, 미지원 변형이거나, 중간에 끊긴 핸드는 건너뛰고 리포트 끝에 개수를 표시합니다. 중복 핸드는 한 번만 셉니다.
@@ -47,22 +57,23 @@ uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv --s
 ### 솔버 (선택)
 
 ```sh
-./scripts/setup_solver.sh   # curl, shasum, unzip 필요. TexasSolver v0.2.0을 .solver/에 받고 SHA-256 검증
-uv run solver.py            # 자가 점검: 작은 플랍 스팟 풀기
+./scripts/setup_solver.sh   # curl, shasum, unzip 필요. TexasSolver v0.2.0을 ~/.cache/hand-review/solver에 받고 SHA-256 검증
+uv run python -m hand_review.solver   # 자가 점검: 작은 플랍 스팟 풀기
 ```
 
-Apple Silicon에서는 macOS 빌드가 Rosetta로 실행됩니다(`softwareupdate --install-rosetta`).
+다른 위치를 쓰려면 `HAND_REVIEW_SOLVER_DIR`을 지정하세요. Apple Silicon에서는 macOS 빌드가 Rosetta로 실행됩니다(`softwareupdate --install-rosetta`).
 `ranges.py`는 PioSOLVER 스타일 `핸드,weight` CSV 레인지를 TexasSolver 레인지 문자열로 바꿉니다.
 
 ## 구조
 
 | 파일 | 역할 |
 |---|---|
-| `analyze.py` | CLI. 핸드 로딩, PokerKit으로 재생, 지표 집계, ICM, MTT ROI |
-| `poker_tui.py` | 같은 결과를 탭으로 보여주는 Textual 앱 |
-| `capture.py` | TUI 화면을 `captures/*.svg` + `.txt`로 저장(리뷰용) |
-| `solver.py` | TexasSolver를 서브프로세스로 실행해 전략 트리 반환 |
-| `ranges.py` | 레인지 CSV → 솔버 레인지 문자열 |
+| `src/hand_review/analyze.py` | CLI(`hand-review`). 핸드 로딩, PokerKit으로 재생, 지표 집계, ICM, MTT ROI |
+| `src/hand_review/tui.py` | 같은 결과를 탭으로 보여주는 Textual 앱 |
+| `src/hand_review/solver.py` | TexasSolver를 서브프로세스로 실행해 전략 트리 반환 |
+| `src/hand_review/ranges.py` | 레인지 CSV → 솔버 레인지 문자열 |
+| `scripts/capture.py` | TUI 화면을 `captures/*.svg` + `.txt`로 저장(리뷰용) |
+| `scripts/setup_solver.sh` | TexasSolver 다운로드·검증 |
 
 `hands` 흐름: `load_hands`(PHH / PokerStars 파서, 레이크·앤티 보정) → `reveal_shown_cards`(쇼다운 카드를 딜 단계에 채워 올인 equity 계산 가능하게) → `analyze_hand`가 액션을 재생하며 프리플랍 지표와 첫 올인 시점 팟 equity 계산 → 플레이어별 `Stats` → 표 출력.
 

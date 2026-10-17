@@ -1,15 +1,23 @@
 [project]
-name = "poker-play-analyzer"
-version = "0.1.0"
+name = "hand-review"
+version = "0.2.0"
 description = "Poker hand history analyzer: VPIP/PFR/3-bet, bb/100, all-in EV, ICM, MTT ROI, with a terminal UI"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "jawsbaek", email = "bshjaws1@gmail.com" }]
 requires-python = ">=3.12"
 dependencies = [
     "pokerkit==0.7.6",
     "textual==8.2.8",
 ]
+
+[project.scripts]
+hand-review = "hand_review.analyze:main"
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.14"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
@@ -27,4 +35,4 @@ select = ["E", "F", "I", "UP", "B"]
 filterwarnings = ["ignore::UserWarning:pokerkit.*"]
 
 [project.urls]
-Repository = "https://github.com/jawsbaek/poker-play-analyzer"
+Repository = "https://github.com/jawsbaek/hand-review"

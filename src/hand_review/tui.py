@@ -1,4 +1,4 @@
-"""analyze.py 결과를 보여주는 textual TUI. `uv run analyze.py tui ...`로 실행."""
+"""analyze.py 결과를 보여주는 textual TUI. `hand-review tui ...`로 실행."""
 
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
