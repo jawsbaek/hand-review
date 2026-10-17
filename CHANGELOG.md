@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning: [SemVer](https://semver.org/) (pre-1.0: interfaces may change).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-17
 
 ### Added
 - Optional turn/river decision EV scoring (`hands --oop-range ... --ip-range ...`): EV loss from real per-action EVs via `ev_rust/` (postflop-solver, AGPL-3.0-or-later, built separately). Flop is not scored.
@@ -27,5 +27,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Textual TUI (`analyze.py tui`) and `capture.py` screen capture
 - TexasSolver wrapper (`solver.py`), checksum-verified installer, range CSV loader
 
+[0.3.0]: https://github.com/jawsbaek/hand-review/releases/tag/v0.3.0
 [0.2.0]: https://github.com/jawsbaek/hand-review/releases/tag/v0.2.0
 [0.1.0]: https://github.com/jawsbaek/hand-review/releases/tag/v0.1.0
