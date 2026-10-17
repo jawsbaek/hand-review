@@ -21,9 +21,7 @@ def test_renders_all_tabs_and_sorts():
             await pilot.pause()
             app = pilot.app
             table = app.query_one("HandsTable")
-            table.on_data_table_header_selected(
-                type("E", (), {"column_key": type("K", (), {"value": "hands"})()})()
-            )
+            table.on_data_table_header_selected(type("E", (), {"column_key": type("K", (), {"value": "hands"})()})())
             assert table.row_count == 1
 
     asyncio.run(run())

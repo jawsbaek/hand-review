@@ -5,6 +5,7 @@
 사용법(데모):
   uv run solver.py
 """
+
 import json
 import platform
 import subprocess

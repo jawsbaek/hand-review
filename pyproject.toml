@@ -10,4 +10,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest==8.4.2",
+    "ruff==0.17.1",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

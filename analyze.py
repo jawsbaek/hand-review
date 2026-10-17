@@ -6,6 +6,7 @@
   uv run analyze.py mtt tournaments.csv              # date,name,buyin,prize
   uv run analyze.py tui --hands samples/ --mtt samples/tournaments.csv
 """
+
 import argparse
 import csv
 import re
@@ -91,10 +92,15 @@ def allin_ev(state, samples, executor=None):
         eligible = [i for i in pot.player_indices if state.statuses[i]]
         equities = calculate_equities(
             [[tuple(state.hole_cards[i])] for i in eligible],
-            board, 2, 5, Deck.STANDARD, (StandardHighHand,),
-            sample_count=samples, executor=executor,
+            board,
+            2,
+            5,
+            Deck.STANDARD,
+            (StandardHighHand,),
+            sample_count=samples,
+            executor=executor,
         )
-        for i, eq in zip(eligible, equities):
+        for i, eq in zip(eligible, equities, strict=True):
             ev[i] += eq * float(pot.unraked_amount)  # 레이크 뺀 팟
     return ev
 
@@ -203,9 +209,14 @@ def compute_hand_rows(path, hero, samples):
     rows.sort(key=lambda r: -r[1].hands)
     rows = [
         (
-            n, s.hands, round(s.net_bb, 1), round(100 * s.net_bb / s.hands, 1),
-            round(100 * s.ev_bb / s.hands, 1), pct(s.vpip, s.hands).strip(),
-            pct(s.pfr, s.hands).strip(), pct(s.threebet, s.threebet_opp).strip(),
+            n,
+            s.hands,
+            round(s.net_bb, 1),
+            round(100 * s.net_bb / s.hands, 1),
+            round(100 * s.ev_bb / s.hands, 1),
+            pct(s.vpip, s.hands).strip(),
+            pct(s.pfr, s.hands).strip(),
+            pct(s.threebet, s.threebet_opp).strip(),
         )
         for n, s in rows
     ]
@@ -270,7 +281,7 @@ def main():
         report_hands(a.path, a.hero, a.samples)
     elif a.cmd == "icm":
         total = sum(a.stacks)
-        for n, (s, e) in enumerate(zip(a.stacks, icm(a.stacks, a.payouts)), 1):
+        for n, (s, e) in enumerate(zip(a.stacks, icm(a.stacks, a.payouts), strict=True), 1):
             print(f"p{n}: 칩 {s:>9.0f} ({100 * s / total:4.1f}%)  ICM ${e:8.2f} ({100 * e / sum(a.payouts):4.1f}%)")
     elif a.cmd == "mtt":
         report_mtt(a.path)

@@ -3,6 +3,7 @@
 렌더링 서버 없이도 리뷰 가능하도록, 캡처한 SVG에서 셀 텍스트를 좌표순으로
 추출해 터미널 화면을 그대로 재구성한 .txt도 같이 남긴다(svg_to_text).
 """
+
 import asyncio
 import html
 import re

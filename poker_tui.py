@@ -1,6 +1,6 @@
 """analyze.py 결과를 보여주는 textual TUI. `uv run analyze.py tui ...`로 실행."""
+
 from textual.app import App, ComposeResult
-from textual.containers import Vertical
 from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
 
 HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet")
@@ -65,6 +65,6 @@ class PokerApp(App):
         stacks, payouts, ev = self.icm_result
         total, pool = sum(stacks), sum(payouts)
         lines = [f"{'player':<10}{'칩':>10}{'칩%':>8}{'ICM $':>10}{'ICM%':>8}"]
-        for n, (s, e) in enumerate(zip(stacks, ev), 1):
+        for n, (s, e) in enumerate(zip(stacks, ev, strict=True), 1):
             lines.append(f"{'p' + str(n):<10}{s:>10.0f}{100 * s / total:>7.1f}%{e:>10.2f}{100 * e / pool:>7.1f}%")
         return "\n".join(lines)
