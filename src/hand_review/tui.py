@@ -1,13 +1,17 @@
 """analyze.py 결과를 보여주는 textual TUI. `hand-review tui ...`로 실행."""
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
 
 HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet")
+SIGNED_COLUMNS = {"net bb", "bb/100", "EV bb/100"}  # 손익 컬럼: 양수 초록 / 음수 빨강
 
 
 def _sort_key(value):
     """숫자 문자열("9.5", "100.0")은 숫자로 비교, "-"·이름은 뒤로."""
+    if isinstance(value, Text):
+        value = value.plain
     try:
         return (0, float(value))
     except (TypeError, ValueError):
@@ -25,7 +29,12 @@ class HandsTable(DataTable):
         for col in HAND_COLUMNS:
             self.add_column(col, key=col)
         for row in self._rows:
-            self.add_row(*row, key=row[0])
+            cells = [
+                Text(str(v), style="green" if v > 0 else "red" if v < 0 else "")
+                if col in SIGNED_COLUMNS else v
+                for col, v in zip(HAND_COLUMNS, row)
+            ]
+            self.add_row(*cells, key=row[0])
 
     def on_data_table_header_selected(self, event):
         col = event.column_key.value
