@@ -42,7 +42,7 @@ def solve(board, oop_range, ip_range, pot, effective_stack, bet_sizes=None, accu
             *(f"set_bet_sizes {pos},{street},{kind},{pct}" for (pos, street, kind), pct in bet_sizes.items()),
             "set_allin_threshold 1.0",
             "build_tree",
-            "set_thread_num 8",
+            "set_thread_num 8",  # 12로 올리면 Rosetta 환경에서 SIGSEGV 확인됨 — 올리지 말 것
             f"set_accuracy {accuracy}",
             f"set_max_iteration {max_iteration}",
             "set_use_isomorphism 1",
@@ -51,9 +51,12 @@ def solve(board, oop_range, ip_range, pot, effective_stack, bet_sizes=None, accu
             f"dump_result {out_path}",
         ]
         cmd = (["arch", "-x86_64"] if platform.system() == "Darwin" else []) + [str(BINARY)]
-        subprocess.run(
-            cmd, input="\n".join(script), capture_output=True, text=True, timeout=300, check=True, cwd=SOLVER_DIR
-        )
+        try:
+            subprocess.run(
+                cmd, input="\n".join(script), capture_output=True, text=True, timeout=300, check=True, cwd=SOLVER_DIR
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"솔버 실패(exit {e.returncode}):\n{(e.stderr or e.stdout)[-2000:]}") from e
         return json.loads(out_path.read_text())
 
 
