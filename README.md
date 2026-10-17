@@ -19,19 +19,20 @@ A small command-line analyzer for your own online poker hand histories, built on
 
 ## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+. CLI and TUI output is in Korean (labels such as `칩` = chips, `토너먼트` = tournaments, `건너뜀` = skipped).
 
 ```sh
 git clone https://github.com/jawsbaek/poker-play-analyzer.git
 cd poker-play-analyzer
 uv sync
-uv run analyze.py hands samples/
+uv run analyze.py hands samples/cash
 ```
 
 ```
 player           hands   net bb    bb/100  EV bb/100  VPIP   PFR  3Bet
-Hero                 3     82.8    2760.0     2317.3 100.0 100.0 100.0
-Villain2             1   -100.0  -10000.0    -6467.2 100.0 100.0 100.0
+Hero                 2    107.8    5390.0     3539.4 100.0 100.0     -
+Villain1             1     -0.5     -50.0      -50.0   0.0   0.0   0.0
+Villain2             1   -100.0  -10000.0    -6298.8 100.0 100.0 100.0
 ...
 ```
 
@@ -40,8 +41,8 @@ Villain2             1   -100.0  -10000.0    -6467.2 100.0 100.0 100.0
 ```sh
 uv run analyze.py hands <file|folder> [--hero NAME] [--samples 5000]
 uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
-uv run analyze.py mtt samples/tournaments.csv
-uv run analyze.py tui --hands samples/ --mtt samples/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
+uv run analyze.py mtt samples/mtt/tournaments.csv
+uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
 ```
 
 `--samples` is the Monte Carlo sample count for all-in equity. Hands that cannot be read, use an unsupported variant, or are cut off are skipped and counted at the end of the report; duplicate hands are counted once.
@@ -52,12 +53,12 @@ uv run analyze.py tui --hands samples/ --mtt samples/tournaments.csv --stacks 50
 |---|---|
 | `.phh` / `.phhs` | [Poker Hand History](https://phh.readthedocs.io/) files. Include `players` so stats group by name, not seat. |
 | PokerStars `.txt` | No-limit Hold'em cash and tournaments. Rake and antes are applied. |
-| MTT CSV | Header `date,name,buyin,prize`. See `samples/tournaments.csv`. |
+| MTT CSV | Header `date,name,buyin,prize`. See `samples/mtt/tournaments.csv`. |
 
 ### Solver (optional)
 
 ```sh
-./scripts/setup_solver.sh   # downloads TexasSolver v0.2.0 into .solver/ and verifies its SHA-256
+./scripts/setup_solver.sh   # needs curl, shasum, unzip; downloads TexasSolver v0.2.0 into .solver/ and verifies its SHA-256
 uv run solver.py            # self-check: solves a small flop spot
 ```
 

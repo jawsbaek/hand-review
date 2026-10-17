@@ -8,7 +8,7 @@ S = Path(__file__).parent / "samples"
 
 def test_allin_ev_and_preflop_stats():
     stats = defaultdict(Stats)
-    for hh in load_hands(S / "cash_allin.phh"):
+    for hh in load_hands(S / "cash" / "cash_allin.phh"):
         analyze_hand(hh, stats, samples=20000)
     hero, v1, v2 = stats["Hero"], stats["Villain1"], stats["Villain2"]
     assert hero.net_bb == 100.5  # 401칩 팟 획득 - 200 투자, bb=2
@@ -22,7 +22,7 @@ def test_allin_ev_and_preflop_stats():
 
 def test_pokerstars_no_allin():
     stats = defaultdict(Stats)
-    for hh in load_hands(S / "pokerstars_cash.txt"):
+    for hh in load_hands(S / "cash" / "pokerstars_cash.txt"):
         analyze_hand(hh, stats)
     hero = stats["Hero"]
     # 팟 1.45 - 레이크 0.02 = 1.43 수령, 투자 0.70 → +0.73 = 7.3bb
@@ -32,7 +32,7 @@ def test_pokerstars_no_allin():
 
 def test_pokerstars_tournament_antes_and_shown_cards():
     stats = defaultdict(Stats)
-    for hh in load_hands(S / "pokerstars_mtt.txt"):
+    for hh in load_hands(S / "mtt" / "pokerstars_mtt.txt"):
         analyze_hand(hh, stats, samples=20000)
     hero = stats["Hero"]
     assert hero.net_bb == -25.0  # 앤티 10 + 2490 올인 = 2500칩, bb=100
@@ -52,7 +52,7 @@ def test_unreadable_and_unfinished_hands_are_flagged(tmp_path):
     import pytest
 
     plo = tmp_path / "plo.txt"
-    plo.write_text((S / "pokerstars_cash.txt").read_text().replace("Hold'em No Limit", "Omaha Pot Limit"))
+    plo.write_text((S / "cash" / "pokerstars_cash.txt").read_text().replace("Hold'em No Limit", "Omaha Pot Limit"))
     assert list(load_hands(plo)) == [None]  # 조용히 사라지지 않고 None으로 표시
 
     unfinished = tmp_path / "cut.phh"

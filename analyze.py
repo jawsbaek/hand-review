@@ -4,7 +4,7 @@
   uv run analyze.py hands <파일|폴더> [--hero 이름]   # .phh / .phhs / PokerStars .txt
   uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
   uv run analyze.py mtt tournaments.csv              # date,name,buyin,prize
-  uv run analyze.py tui --hands samples/ --mtt samples/tournaments.csv
+  uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv
 """
 
 import argparse
@@ -53,7 +53,11 @@ def load_hands(path):
             yield from hands
         elif f.suffix == ".txt":
             # ponytail: PokerStars 포맷만 지원, GG 등은 파서 추가 필요
-            text = f.read_text(encoding="utf-8-sig")
+            try:
+                text = f.read_text(encoding="utf-8-sig")
+            except UnicodeDecodeError:  # 폴더 안의 다른 인코딩 메모 파일 하나 때문에 전체가 죽지 않게
+                yield None
+                continue
             for chunk in re.split(r"\n(?=PokerStars )", text):
                 yield from load_pokerstars_hand(chunk)
 
@@ -250,10 +254,13 @@ def report_mtt(path):
 def run_tui(hands_path=None, hero=None, samples=5000, mtt_path=None, icm_stacks=None, icm_payouts=None):
     from poker_tui import PokerApp
 
-    hand_rows = compute_hand_rows(hands_path, hero, samples)[0] if hands_path else None
+    hand_rows, skipped, dups = compute_hand_rows(hands_path, hero, samples) if hands_path else (None, 0, 0)
     mtt_summary = compute_mtt_summary(mtt_path) if mtt_path else None
     icm_result = (icm_stacks, icm_payouts, icm(icm_stacks, icm_payouts)) if icm_stacks else None
-    PokerApp(hand_rows, mtt_summary, icm_result).run()
+    app = PokerApp(hand_rows, mtt_summary, icm_result)
+    if skipped or dups:
+        app.sub_title = f"건너뜀 {skipped}개, 중복 {dups}개"
+    app.run()
 
 
 def main():
@@ -276,6 +283,9 @@ def main():
     t.add_argument("--stacks", type=float, nargs="+")
     t.add_argument("--payouts", type=float, nargs="+")
     a = ap.parse_args()
+    for p in (getattr(a, "path", None), getattr(a, "hands", None), getattr(a, "mtt", None)):
+        if p is not None and not p.exists():
+            ap.error(f"경로 없음: {p}")
 
     if a.cmd == "hands":
         report_hands(a.path, a.hero, a.samples)
@@ -286,6 +296,8 @@ def main():
     elif a.cmd == "mtt":
         report_mtt(a.path)
     else:
+        if bool(a.stacks) != bool(a.payouts):
+            ap.error("tui: --stacks와 --payouts는 함께 지정해야 함")
         if not (a.hands or a.mtt or a.stacks):
             ap.error("tui: --hands, --mtt, --stacks 중 하나 이상 필요")
         run_tui(a.hands, a.hero, a.samples, a.mtt, a.stacks, a.payouts)

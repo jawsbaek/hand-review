@@ -6,6 +6,14 @@ from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, Ta
 HAND_COLUMNS = ("player", "hands", "net bb", "bb/100", "EV bb/100", "VPIP", "PFR", "3Bet")
 
 
+def _sort_key(value):
+    """숫자 문자열("9.5", "100.0")은 숫자로 비교, "-"·이름은 뒤로."""
+    try:
+        return (0, float(value))
+    except (TypeError, ValueError):
+        return (1, str(value))
+
+
 class HandsTable(DataTable):
     def __init__(self, rows):
         super().__init__()
@@ -23,7 +31,7 @@ class HandsTable(DataTable):
         col = event.column_key.value
         self._reverse = not self._reverse if col == self._sort_col else False
         self._sort_col = col
-        self.sort(col, reverse=self._reverse)
+        self.sort(col, key=_sort_key, reverse=self._reverse)
 
 
 class PokerApp(App):

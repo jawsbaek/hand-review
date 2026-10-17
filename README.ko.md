@@ -22,7 +22,7 @@
 git clone https://github.com/jawsbaek/poker-play-analyzer.git
 cd poker-play-analyzer
 uv sync
-uv run analyze.py hands samples/
+uv run analyze.py hands samples/cash
 ```
 
 ## 사용법
@@ -30,8 +30,8 @@ uv run analyze.py hands samples/
 ```sh
 uv run analyze.py hands <파일|폴더> [--hero 이름] [--samples 5000]
 uv run analyze.py icm --stacks 5000 3000 2000 --payouts 50 30 20
-uv run analyze.py mtt samples/tournaments.csv
-uv run analyze.py tui --hands samples/ --mtt samples/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
+uv run analyze.py mtt samples/mtt/tournaments.csv
+uv run analyze.py tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
 ```
 
 `--samples`는 올인 equity 몬테카를로 샘플 수입니다. 읽을 수 없거나, 미지원 변형이거나, 중간에 끊긴 핸드는 건너뛰고 리포트 끝에 개수를 표시합니다. 중복 핸드는 한 번만 셉니다.
@@ -42,12 +42,12 @@ uv run analyze.py tui --hands samples/ --mtt samples/tournaments.csv --stacks 50
 |---|---|
 | `.phh` / `.phhs` | [Poker Hand History](https://phh.readthedocs.io/). 좌석이 아니라 이름으로 묶이도록 `players`를 꼭 적으세요. |
 | PokerStars `.txt` | NL 홀덤 캐시·토너먼트. 레이크와 앤티 반영. |
-| MTT CSV | 헤더 `date,name,buyin,prize`. `samples/tournaments.csv` 참고. |
+| MTT CSV | 헤더 `date,name,buyin,prize`. `samples/mtt/tournaments.csv` 참고. |
 
 ### 솔버 (선택)
 
 ```sh
-./scripts/setup_solver.sh   # TexasSolver v0.2.0을 .solver/에 받고 SHA-256 검증
+./scripts/setup_solver.sh   # curl, shasum, unzip 필요. TexasSolver v0.2.0을 .solver/에 받고 SHA-256 검증
 uv run solver.py            # 자가 점검: 작은 플랍 스팟 풀기
 ```
 
