@@ -12,6 +12,7 @@ A small command-line analyzer for your own online poker hand histories, built on
 - **ICM**: Malmuth-Harville chip-to-prize equity
 - **Tournament ROI / ITM** from a simple CSV
 - **Terminal UI** (Textual) with sortable tables
+- **Pokerist replay**: an offline browser table, action playback, decision filters and practice mode
 - **Optional GTO solver wrapper** around [TexasSolver](https://github.com/bupticybee/TexasSolver) for postflop spots
 
 > For studying your own hands after the session. It is not a real-time assistant; do not use it while playing.
@@ -50,6 +51,7 @@ From a clone, prefix with `uv run`.
 
 ```sh
 hand-review hands <file|folder> [--hero NAME] [--samples 5000]
+hand-review replay <Pokerist.jsonl|folder> --output reports/replay.html
 hand-review icm --stacks 5000 3000 2000 --payouts 50 30 20
 hand-review mtt samples/mtt/tournaments.csv
 hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 5000 3000 2000 --payouts 50 30 20
@@ -63,7 +65,57 @@ hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 
 |---|---|
 | `.phh` / `.phhs` | [Poker Hand History](https://phh.readthedocs.io/) files. Include `players` so stats group by name, not seat. |
 | PokerStars `.txt` | No-limit Hold'em cash and tournaments. Rake and antes are applied. |
+| Pokerist `.jsonl` | `replay` / `serve`. Observation exports with `kind: pokerist-hand`, `hero`, `board`, and protocol `actions`. |
 | MTT CSV | Header `date,name,buyin,prize`. See `samples/mtt/tournaments.csv`. |
+
+### Pokerist browser replay
+
+```sh
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html
+open reports/demo.html  # macOS; open the file with a browser on other platforms
+```
+
+The demo is entirely synthetic. Use your own local export instead to review a session.
+The generated HTML includes all its data and assets, works offline, and makes no external requests.
+Keep real exports and generated reports local; both are gitignored (only the synthetic sample is tracked).
+
+- Play, pause, step, scrub, jump to a street or the next hero decision; autoplay pauses at hero decisions by default.
+- Filter **blunder / best candidates**, review decisions or unscored decisions. One hand can contain both good and questionable actions.
+- Switch to practice mode to choose before seeing the recorded action and review. This compares choices and then resumes the real history; it does not simulate an alternative continuation.
+- Results stay hidden by default. Future board cards and opponent cards remain hidden until their replay point; exported opponent reveals appear only at the end.
+- Table departures retain their recorded contributions. Departed players leave the action count, while departed all-in players remain eligible for pots. A new occupant does not replace the previous hand participant.
+- Raises display the total street amount and, when different, the extra payment separately (for example, raise to 3 BB, adding 2 BB from the big blind).
+
+Each decision now compares the recorded action and sizing with **solver candidates** and a separate **practical coaching recommendation**. Amounts distinguish raise-to totals, extra payments and payment/current-pot percentages. Details include candidate EVs, calculated solver frequencies, model sampling errors and editable range assumptions. The existing blunder/best filters remain heuristic candidates, separate from these numerical comparisons.
+
+Build the optional solver for heads-up postflop equilibrium comparisons and node-lock scenarios:
+
+```sh
+cargo build --release --manifest-path ev_rust/Cargo.toml
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/ev-demo.html \
+  --oop-range "KK,77,22,54s,65s" --ip-range "QQ,JJ"
+```
+
+The example ranges describe the synthetic sample. Without overrides, ranges are versioned, visible **model priors, not solved preflop charts or measured opponent ranges**. The solver supports structurally complete heads-up flop/turn/river states, searches a finite bet/raise grid with bounded bet refinement, and preserves mixed frequencies. Incomplete paths, changed pot amounts, 1 GiB memory limits, timeouts (12 seconds per solve by default) and insufficient convergence withhold the solver result. These limits do not turn a model estimate into a solver result.
+
+Replay solves enforce a 1 BB minimum bet throughout both players' branches and future streets before solving, while retaining genuine short-stack all-ins. Effective-stack all-ins are displayed as legal announced amounts for the player's real stack, with unmatched excess returned. Rebuild older EV binaries: results without the whole-tree minimum-bet guarantee are withheld.
+
+Preflop and multiway coaching uses a reproducible Monte Carlo response model: simulate the rest of the current betting round, allow at most one opponent counter-raise, then check down sampled runouts. It handles dead contributions, all-in side pots, ties and unmatched returns. It assumes zero rake, approximate response policies, and no inference from unknown folded cards. **It does not optimize future-street betting or establish a full-hand optimal strategy.** Default coaching compares conservative estimates across three response assumptions; detail rows show sampling error separately from model uncertainty. Increase precision with `--analysis-samples 512`, or use `--no-solver` for model-only reports.
+
+The response model tracks reopening rights per player, including short all-ins, and calculates call odds from contributions that caller can win. Unreachable side-pot money never improves its call odds. These rule checks do not validate the assumed response policy as professional strategy.
+
+Opponent evidence uses partner/player IDs and only trustworthy completed hands ending before the reviewed hand. Broad aggregate observations cannot identify combo/board/size-specific strategy. Personal automatic exploitation is therefore withheld; the report retains the baseline and offers explicit fold-response ±15 percentage-point experiments. On supported solver states these experiments lock first opponent response nodes on the current board and resolve; other states use model scenarios. Locked-game convergence is not a loss bound against an unrestricted opponent. See [node locking](https://piosolver.com/docs/viewer/node_locking/) and [confidence-aware opponent exploitation](https://proceedings.mlr.press/v5/johanson09a.html) for the methodological background; those sources do not validate this implementation.
+
+To edit ranges and recompute in the browser:
+
+```sh
+uv run hand-review serve samples/pokerist/demo.jsonl --port 8765
+# Open http://127.0.0.1:8765/ ; Ctrl+C stops the local process.
+```
+
+The workbench binds only to loopback, checks Host/Origin and a per-session token, limits its queue, and caches calculations privately in `.hand-review-cache`. It sends no data to external services. The offline HTML still displays saved results and scenarios; live range recomputation requires the local workbench. Invalid input preserves the last valid result and is recoverable in the editor.
+
+Net is the exported stack-boundary difference and may include top-ups; pot collection events are never treated as payouts. Missing starts, contradictory payments, incomplete records and mixed boundaries are flagged. Suit 4 keeps its literal `/s4` label; the internal `s` token is only a consistent suit mapping. Outcomes, future board/opponent cards and the recorded hero choice do not enter recommendation candidate construction.
 
 ### Solver (optional)
 
@@ -97,6 +149,9 @@ solver tree. To use a binary elsewhere, set `HAND_REVIEW_EV_BIN`. Without the bu
 |---|---|
 | `src/hand_review/analyze.py` | CLI (`hand-review`). Loads hands, replays them with PokerKit, aggregates stats, ICM, MTT ROI |
 | `src/hand_review/tui.py` | Textual app showing the same results in tabs |
+| `src/hand_review/pokerist.py` | Validates Pokerist JSONL and reconstructs observation snapshots |
+| `src/hand_review/review.py` | Pre-action heuristic candidates and optional real solver EV comparisons |
+| `src/hand_review/replay.py`, `replay.html` | Self-contained offline browser report and replay UI |
 | `src/hand_review/solver.py` | Runs TexasSolver as a subprocess and returns its strategy tree |
 | `src/hand_review/ranges.py` | Range CSV → solver range string |
 | `src/hand_review/ev_engine.py` | Runs `ev_rust` (subprocess, JSON) and returns per-action EVs |
@@ -113,7 +168,7 @@ Flow for `hands`: `load_hands` (PHH / PokerStars parser, with rake and ante fixe
 - PHH files without `players` are grouped by seat (`p1`, `p2`, ...).
 - Straddles: the largest blind is treated as the big blind.
 - Mixing cash and tournament hands in one folder mixes bb units. Keep them in separate folders.
-- Only PokerStars text format is parsed; other sites (GG, etc.) need a parser.
+- Statistical analysis accepts PHH/PokerStars; Pokerist observation JSONL is supported by `replay` only. Other sites (GG, etc.) need a parser.
 - ICM is exact enumeration, practical up to a final table (about 9 players).
 
 ## Development
@@ -122,6 +177,11 @@ Flow for `hands`: `load_hands` (PHH / PokerStars parser, with rake and ante fixe
 uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run pytest
+# Browser regression checks (Playwright is a development tool, not a runtime dependency):
+npm install --no-save --no-package-lock playwright@1.58.1
+npx playwright install chromium
+uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html
+node scripts/verify_replay.mjs
 ```
 
 ## License

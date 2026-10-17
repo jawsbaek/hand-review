@@ -14,6 +14,7 @@ EV 정의 (postflop-solver expected_values_detail 그대로):
 """
 
 import json
+import math
 import os
 import subprocess
 from pathlib import Path
@@ -40,9 +41,17 @@ def solve_node(
     target_expl_pct=0.1,
     max_iter=1000,
     max_mem_gib=8.0,
+    timeout_seconds=None,
+    min_bet=None,
     **extra,
 ) -> dict:
-    """원시 결과(actions/evs/strategy/exploitability/solve_ms/mem_bytes) 반환. path = 액션 이름(찬스 노드는 카드)."""
+    """Return per-action EVs; path uses action names (card strings at chance nodes).
+
+    min_bet uses pot/stack units and constrains the entire tree before solving.
+    None preserves legacy calls whose table minimum is unknown.
+    """
+    if min_bet is not None and (not math.isfinite(min_bet) or min_bet <= 0):
+        raise ValueError("최소 베팅은 0보다 큰 유한한 금액이어야 합니다.")
     req = {
         "board": list(board),
         "oop_range": oop_range,
@@ -60,9 +69,11 @@ def solve_node(
         "max_mem_gib": max_mem_gib,  # 트리 메모리 추정치 초과 시 솔브 전에 중단
         **extra,  # add_allin_threshold / force_allin_threshold / merging_threshold / compress
     }
+    if min_bet is not None:
+        req["min_bet"] = max(1, math.ceil(min_bet * SCALE - 1e-8))
     if not BIN.exists():
         raise FileNotFoundError(f"{BIN} 없음: cargo build --release --manifest-path ev_rust/Cargo.toml")
-    p = subprocess.run([BIN], input=json.dumps(req), capture_output=True, text=True)
+    p = subprocess.run([BIN], input=json.dumps(req), capture_output=True, text=True, timeout=timeout_seconds)
     if p.returncode != 0:
         raise RuntimeError(f"ev_rust 실패: {p.stderr.strip()}")
     out = json.loads(p.stdout)
@@ -70,6 +81,11 @@ def solve_node(
     out["ev"] = dict(zip(out["actions"], out["evs"], strict=True))
     out["pot"] /= SCALE
     out["exploitability"] /= SCALE
+    if "min_bet" in out:
+        out["min_bet"] /= SCALE
+    for amount in out.get("amounts", []):
+        amount["to"] /= SCALE
+        amount["paid"] /= SCALE
     return out
 
 
