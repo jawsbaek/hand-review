@@ -30,9 +30,8 @@ class HandsTable(DataTable):
             self.add_column(col, key=col)
         for row in self._rows:
             cells = [
-                Text(str(v), style="green" if v > 0 else "red" if v < 0 else "")
-                if col in SIGNED_COLUMNS else v
-                for col, v in zip(HAND_COLUMNS, row)
+                Text(str(v), style="green" if v > 0 else "red" if v < 0 else "") if col in SIGNED_COLUMNS else v
+                for col, v in zip(HAND_COLUMNS, row, strict=True)
             ]
             self.add_row(*cells, key=row[0])
 
