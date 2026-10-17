@@ -64,6 +64,21 @@ uv run python -m hand_review.solver   # 자가 점검: 작은 플랍 스팟 풀�
 다른 위치를 쓰려면 `HAND_REVIEW_SOLVER_DIR`을 지정하세요. Apple Silicon에서는 macOS 빌드가 Rosetta로 실행됩니다(`softwareupdate --install-rosetta`).
 `ranges.py`는 PioSOLVER 스타일 `핸드,weight` CSV 레인지를 TexasSolver 레인지 문자열로 바꿉니다.
 
+### 턴·리버 EV 채점 (선택, AGPL)
+
+헤즈업 팟에서 카드를 아는 턴·리버 결정마다 `EV(최선 액션) - EV(실제 액션)`을 계산합니다.
+[postflop-solver](https://github.com/b-inary/postflop-solver)의 실제 액션별 EV를 쓰므로,
+균형에서 섞어 쓰는 액션은 손실 0입니다. 플랍은 채점하지 않습니다.
+
+```sh
+cargo build --release --manifest-path ev_rust/Cargo.toml   # Rust 툴체인 필요
+uv run hand-review hands samples/ev --oop-range "KK,77,22,54s,65s" --ip-range "QQ,JJ"
+```
+
+레인지는 문자열 또는 CSV 경로입니다. OOP/IP별로 고정되고 앞선 액션으로 좁히지 않으므로 숫자는
+대략적인 참고용입니다. 트리에 없는 벳 사이즈는 가장 가까운 사이즈로 매핑합니다. 다른 위치의 바이너리를 쓰려면 `HAND_REVIEW_EV_BIN`을 지정하세요.
+빌드하지 않아도 `hand-review`는 그대로 동작하고, EV 테스트만 건너뜁니다.
+
 ## 구조
 
 | 파일 | 역할 |
@@ -72,6 +87,8 @@ uv run python -m hand_review.solver   # 자가 점검: 작은 플랍 스팟 풀�
 | `src/hand_review/tui.py` | 같은 결과를 탭으로 보여주는 Textual 앱 |
 | `src/hand_review/solver.py` | TexasSolver를 서브프로세스로 실행해 전략 트리 반환 |
 | `src/hand_review/ranges.py` | 레인지 CSV → 솔버 레인지 문자열 |
+| `src/hand_review/ev_engine.py` | `ev_rust`를 실행(서브프로세스, JSON)해 액션별 EV 반환 |
+| `ev_rust/` | postflop-solver 기반 Rust CLI: 스팟을 풀고 노드의 EV 출력 (AGPL-3.0) |
 | `scripts/capture.py` | TUI 화면을 `captures/*.svg` + `.txt`로 저장(리뷰용) |
 | `scripts/setup_solver.sh` | TexasSolver 다운로드·검증 |
 
@@ -99,3 +116,7 @@ uv run pytest
 MIT, [LICENSE](LICENSE) 참고.
 
 의존성: PokerKit(MIT), Textual(MIT). TexasSolver는 AGPL-3.0이며 이 리포에 **포함되지 않습니다**. `setup_solver.sh`가 별도로 내려받고 `solver.py`는 외부 프로그램으로 실행만 합니다.
+
+예외는 `ev_rust/` 하나입니다. postflop-solver(AGPL-3.0-or-later)를 링크하므로 이 폴더만
+AGPL-3.0-or-later입니다([ev_rust/LICENSE](ev_rust/LICENSE)). 나머지는 MIT이고, `src/hand_review/ev_engine.py`는
+빌드된 바이너리를 별도 프로세스로 실행해 JSON만 주고받습니다.

@@ -1,0 +1,15 @@
+# 턴·리버 EV 채점 예제: Hero(OOP) KcKd가 리버 밸류를 체크로 놓침
+variant = "NT"
+antes = [0, 0]
+blinds_or_straddles = [1, 2]
+min_bet = 2
+starting_stacks = [30, 30]
+players = ["Hero", "Villain"]
+actions = [
+  "d dh p1 KcKd", "d dh p2 QhQd",
+  "p2 cbr 10", "p1 cc",
+  "d db Ks7d2c", "p1 cc", "p2 cc",
+  "d db 3h", "p1 cc", "p2 cc",
+  "d db 9s", "p1 cc", "p2 cc",
+  "p1 sm KcKd", "p2 sm QhQd",
+]
