@@ -1,6 +1,6 @@
 [project]
 name = "hand-review"
-version = "0.2.0"
+version = "0.3.0"
 description = "Poker hand history analyzer: VPIP/PFR/3-bet, bb/100, all-in EV, ICM, MTT ROI, with a terminal UI"
 readme = "README.md"
 license = "MIT"
