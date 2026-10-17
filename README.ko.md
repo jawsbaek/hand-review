@@ -4,7 +4,7 @@
 
 내 온라인 포커 핸드 히스토리를 분석하는 작은 CLI입니다. [PokerKit](https://github.com/uoftcprg/pokerkit) 기반.
 
-- **프리플랍 지표**: VPIP, PFR, 3Bet / 포스트플랍 벳·레이즈에 폴드율(F2R)
+- **프리플랍 지표**: VPIP, PFR, 3Bet / 포스트플랍 레이즈에 폴드율(F2R)
 - **성적**: net bb, bb/100, **올인 EV bb/100** (올인 시점 equity로 운을 걷어낸 손익)
 - **ICM**: Malmuth-Harville 칩 → 상금 기대값
 - **토너먼트 ROI / ITM** (CSV 입력)

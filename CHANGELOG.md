@@ -6,7 +6,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Added
 - Optional turn/river decision EV scoring (`hands --oop-range ... --ip-range ...`): EV loss from real per-action EVs via `ev_rust/` (postflop-solver, AGPL-3.0-or-later, built separately). Flop is not scored.
-- `F2R` column: postflop fold-to-bet/raise rate per player.
+- `F2R` column: postflop fold-to-raise rate per player (raises only, not bets).
 - `exploit.py` / `best_response.py`: GTO/exploit blending bounded by an EV-loss budget (library only).
 
 ## [0.2.0] - 2026-10-17

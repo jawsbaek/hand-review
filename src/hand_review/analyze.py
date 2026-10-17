@@ -40,7 +40,7 @@ class Stats:
     pfr: int = 0
     threebet: int = 0
     threebet_opp: int = 0
-    raise_faced: int = 0  # 포스트플랍에서 벳/레이즈를 맞은 횟수 (exploit.py 상대 모델링 입력)
+    raise_faced: int = 0  # 포스트플랍에서 레이즈를 맞은 횟수(벳 제외) (exploit.py 상대 모델링 입력)
     folded_to_raise: int = 0
     decisions: int = 0  # 솔버로 채점한 턴·리버 결정 수 (EV 채점 켰을 때만)
     ev_loss_bb: float = 0.0  # 그 결정들의 EV loss 합: EV(최선 액션) - EV(실제 액션)
@@ -171,19 +171,21 @@ def analyze_hand(hh, stats, samples=5000, executor=None, ev_ranges=None):
     bb = float(max(hh.blinds_or_straddles))
     start = [float(s) for s in hh.starting_stacks]
     vpip, pfr, tb, tb_opp = set(), set(), set(), set()
-    raise_faced, folded_to_raise = defaultdict(int), defaultdict(int)
+    raise_faced, folded_to_raise, street_aggr = defaultdict(int), defaultdict(int), 0
     raises, preflop, ev, to_call = 0, True, None, 0
     street, loss, decisions = None, defaultdict(float), defaultdict(int)
     pot_prev, all_in_prev, holes_prev = 0.0, [0.0] * len(start), [[] for _ in start]
 
     for state, action in hh.state_actions:
         parts = action.split() if action else []
-        if not preflop and parts and parts[0].startswith("p") and to_call:
-            i = int(parts[0][1:]) - 1
-            raise_faced[i] += 1
-            folded_to_raise[i] += parts[1] == "f"
+        if not preflop and parts and parts[0].startswith("p"):
+            if to_call and street_aggr >= 2:  # 벳이 아니라 레이즈(이 스트리트 2번째 이상 공격)를 맞음
+                i = int(parts[0][1:]) - 1
+                raise_faced[i] += 1
+                folded_to_raise[i] += parts[1] == "f"
+            street_aggr += parts[1] == "cbr"
         if parts[:2] == ["d", "db"]:
-            preflop = False
+            preflop, street_aggr = False, 0
         elif preflop and parts and parts[0].startswith("p"):
             i, op = int(parts[0][1:]) - 1, parts[1]
             if raises == 1:
