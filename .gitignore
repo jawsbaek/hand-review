@@ -12,3 +12,6 @@ dist/
 
 # TUI 캡처 산출물 (capture.py)
 captures/
+
+# Rust 빌드 산출물 (ev_rust)
+target/
