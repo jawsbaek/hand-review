@@ -5,6 +5,7 @@ can be stack snapshots or stale bets. COLLECT_POT is never a payout record.
 """
 
 import copy
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -57,6 +58,14 @@ def _seat(value):
 def _eligible(player):
     """A departed all-in player still contests pots; a departed live stack does not."""
     return not player["folded"] and (not player["departed"] or player["all_in"])
+
+
+def player_key(attrs):
+    """Scope capture IDs by partner; never join different people by nickname."""
+    if attrs.get("PID") is None:
+        return None
+    value = f"{attrs.get('PARTNER_ID', '')}:{attrs['PID']}"
+    return hashlib.sha256(value.encode()).hexdigest()[:24]
 
 
 def _validate(raw):
@@ -186,6 +195,7 @@ def replay_hand(raw, number):
                 "departed": False,
                 "all_in": False,
                 "cards": [],
+                "player_key": None,
             }
     players.setdefault(
         hero["seat"],
@@ -200,6 +210,7 @@ def replay_hand(raw, number):
             "departed": False,
             "all_in": False,
             "cards": [],
+            "player_key": None,
         },
     )
     players[hero["seat"]]["cards"] = list(hero["cards"])
@@ -233,6 +244,7 @@ def replay_hand(raw, number):
     )
     stage, pot, frames, decisions, raises = "Preflop", 0.0, [], [], 0
     street_context, revealed = None, False
+    last_raise, acted = bb or 0.0, {}
 
     def snapshot(label, action=None):
         frames.append(
@@ -248,10 +260,11 @@ def replay_hand(raw, number):
         )
 
     def change_street(new):
-        nonlocal stage, street_context
+        nonlocal stage, street_context, last_raise, acted
         if STREETS[new] <= STREETS[stage]:
             return
         stage = new
+        last_raise, acted = bb or 0.0, {}
         for p in players.values():
             p["bet"] = 0.0
         active = [p for p in players.values() if _eligible(p)]
@@ -263,12 +276,17 @@ def replay_hand(raw, number):
                 "eff_bb": min(p["stack"] for p in active) / bb,
                 "oop": None,
                 "path": [],
+                "players": copy.deepcopy(active),
             }
         snapshot(f"{new} 공개")
 
     snapshot("핸드 시작")
     for a in actions:
         event, attrs = a["event"], a.get("attrs", {})
+        if a.get("who") is not None and int(a["who"]) in players and event != "GS_NEW_PLAYER":
+            known = players[int(a["who"])]
+            if not known["departed"] and player_key(attrs):
+                known["player_key"] = player_key(attrs)
         if event in DEALS:
             change_street(DEALS[event])
         if event == "GS_STANDUP_DESK" and a.get("who") is not None:
@@ -317,6 +335,7 @@ def replay_hand(raw, number):
                         "stage": stage,
                         "action": action,
                         "context": {
+                            "stage": stage,
                             "board": list(board[: STREETS[stage]]),
                             "cards": list(hero["cards"]),
                             "position": hero["position"],
@@ -329,6 +348,16 @@ def replay_hand(raw, number):
                             "active": sum(_eligible(x) for x in players.values()),
                             "trustworthy": trustworthy,
                             "street": copy.deepcopy(street_context),
+                            "hero_seat": hero["seat"],
+                            "players": copy.deepcopy(list(players.values())),
+                            "history": [
+                                {"stage": f["stage"], "board": f["board"], **copy.deepcopy(f["action"])}
+                                for f in frames
+                                if f["action"]
+                            ],
+                            "min_raise_to": max(x["bet"] for x in players.values()) + last_raise,
+                            "raise_reopened": p["seat"] not in acted or to_call >= last_raise - 1e-8,
+                            "acted": list(acted),
                         },
                     }
                 )
@@ -342,6 +371,10 @@ def replay_hand(raw, number):
                 action["solver_name"] = solver_name
                 street_context["path"].append(solver_name)
         if event in MONEY:
+            if is_raise and event in CHOICES:
+                increment = target - max(x["bet"] for x in players.values())
+                if increment >= last_raise:
+                    last_raise = increment
             pot += paid
             p["total"] += paid
             p["bet"] = target
@@ -350,6 +383,8 @@ def replay_hand(raw, number):
                 p["stack"] = float(attrs["D_AMOUNT"])
             p["all_in"] = p["stack"] == 0
         p["folded"] |= event == "GS_FOLD"
+        if event in CHOICES:
+            acted[p["seat"]] = max(x["bet"] for x in players.values())
         raises += is_raise and stage == "Preflop"
         snapshot(f"{p['nick']} · {label}", action)
 
@@ -374,6 +409,7 @@ def replay_hand(raw, number):
         "id": str(raw.get("_key") or number),
         "number": number,
         "started_ts": raw.get("started_ts"),
+        "ended_ts": raw.get("ended_ts") if finished and not boundary_bad else None,
         "table_id": raw.get("table_id"),
         "hero": hero,
         "bb": bb,

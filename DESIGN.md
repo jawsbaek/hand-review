@@ -235,13 +235,15 @@ The felt and its inset outline share the rounded oval silhouette. Small control 
 
 Default buttons are white with a thin divider-colored border, semibold text and a minimum height of 40px. Primary buttons fill with Control Green and darken on hover. Default buttons use the pale control-hover surface. Disabled buttons reduce opacity to 0.4. Icon controls use inline SVG; the regular transport width is 40px and the play control is 48px wide.
 
-Interactive buttons, fields, selects and disclosure summaries share a visible amber focus outline (3px, offset 3px). Filter and street controls have compact component-specific heights. Re-rendered controls preserve keyboard focus, and practice submission moves focus to the resulting replay action.
+Interactive buttons, fields, selects, range textareas and disclosure summaries share a visible amber focus outline (3px, offset 3px). Filter and street controls have compact component-specific heights. Re-rendered controls preserve keyboard focus, and practice submission moves focus to the resulting replay action.
 
 Practice choices use the default button treatment. With no call cost, visible preflop bets produce check and raise choices; an unopened street produces check and bet choices. The raise or bet choice is omitted when raising is unavailable. The status line changes from a choice prompt to a recorded-choice confirmation after selection.
 
 ### Inputs / Fields
 
 Search and select controls have white surfaces, thin borders, field corners, padding of 7px by 9px and a minimum height of 38px. Search fills its column. Range controls and checkboxes use the primary green accent. Header selects use the darker header treatment; the speed select is a smaller transport variant.
+
+Range textareas reuse the white field surface, divider border, field corners and padding. They fill their container, start at a minimum height of 68px and resize vertically. Their labels and text use the compact label size. Selected textarea text uses white on Control Green.
 
 ### Chips
 
@@ -256,6 +258,24 @@ Library entries are full-width button rows, with a two-column heading area and a
 Supporting regions use ground or pale surface fills and divider lines; they are not shadowed floating cards. The decision inspector pairs short headings with explanation text, a two-column numeric summary and optional tabular analysis. Action logs scroll independently and emphasize the current action with green bold text.
 
 Recorded raise copy names the street total, followed by the additional payment in parentheses when the amounts differ. The same wording appears in the decision inspector and action log.
+
+### Action and Sizing Comparison
+
+The comparison extends the flat decision inspector with a divider, top padding of 15px and vertical margins of 20px. A compact section heading (14px) introduces stacked solver and practical-coaching rows. Each row keeps its method label visible above the recommendation (16px, bold, tabular numerals) and supporting explanation. Long action and sizing text wraps within the inspector. The existing heuristic classification remains identified separately above this section.
+
+The solver row is labelled separately and explains when a solver result is unavailable. The method guidance limits solver output to supported heads-up postflop states and a finite candidate tree. Practical coaching visibly names either a solver baseline or a model estimate. Model coaching shows its selection basis and calculation scope beside the recommendation: the current betting round, at most one opponent re-raise, then checkdown, with zero rake assumed and later-street betting unoptimized. Model basis and scope remain visible outside the detail disclosures.
+
+Native disclosures hold hypothetical response scenarios and candidate details. Their summaries use semibold text, a minimum height of 36px and the common focus outline. The scenario selector fills the available width. Baseline and shifted fold-probability scenarios remain explicitly hypothetical; their result identifies solver equilibrium, solver node locking of the first opponent response, or a model estimate as applicable. The explanation states that these assumptions are not observed opponent tendencies.
+
+Candidate tables separate action and sizing, frequency and EV in BB. A recommended row adds visible recommendation text as well as bold green type. Model frequencies use an em dash because they are not calculated. Model EV uncertainty is labelled as twice the sampling standard error, alongside sample count and assumptions; it does not describe model risk. Candidate tables scroll within a maximum height of 330px, retain sticky pale headers and wrap long cells. The same disclosures remain part of the normal inspector flow on narrow screens.
+
+### Range Editing and Recalculation
+
+The range disclosure labels each textarea by position and identifies the reviewing player's range. Supporting copy identifies the values as street-start modelling priors and explains the accepted input format. The local analysis view provides editable fields and a primary recalculation button. A saved static report exposes the same values as read-only textareas with an explanation of where recalculation is available.
+
+Draft input, the submitted snapshot and the ranges applied to displayed results remain distinct. A visible stale-result note appears when input differs from the applied ranges, including while a different submitted snapshot is being calculated. Existing results remain visible during recalculation. Edits made while a request is running remain drafts after that request finishes; the warning clears only when current input matches the applied result. When no result is available, the note instead asks for calculation with the current input.
+
+Loading, completion, withheld recommendations and recoverable errors use a text status region with a minimum height of 24px and `role="status"`. The recalculation button is disabled while a request runs; textareas remain editable. A failed request keeps the applied analysis and draft input, re-enables submission and explains the error. The range disclosure stays open through updates. An active editor regains focus and its text selection; otherwise a submitted calculation returns focus to the recalculation button. These states retain the existing surfaces, colors and focus treatment.
 
 ### Playing Cards and Seats
 

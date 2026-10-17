@@ -5,11 +5,16 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ## [Unreleased]
 
 ### Added
+- Action/sizing comparison with solver EVs and mixed frequencies, bounded sizing refinement, explicit opponent node-lock scenarios, and separately labelled Monte Carlo coaching estimates across preflop/multiway states.
+- Chronological opponent evidence using stable capture IDs, editable range assumptions, conservative scenario comparison, and a loopback-only `serve` workbench with private caching and recoverable input errors.
+- Exact evaluator cross-checks, side-pot/uncalled-return tests, closed-form node-lock EV checks, and real HTTP/range-recalculation browser checks in CI.
 - `hand-review replay`: Pokerist JSONL import and a standalone offline browser table with action/street playback, hero-decision pauses, blunder/best candidate filters, hidden results and practice mode.
 - Conservative pre-action review explanations and optional real heads-up turn/river solver EV comparisons using explicit ranges; unsupported or unreliable decisions remain unscored.
 - Synthetic Pokerist examples, import/accounting/boundary/solver regression tests and desktop/mobile browser checks in CI.
 
 ### Fixed
+- Legal minimum raises remain available against short matching stacks; unmatched excess is returned in model payoffs.
+- Range editing labels stale results, preserves newer drafts during calculation, and restores visible keyboard focus after completion or recoverable errors.
 - Pokerist departures now remove non-all-in players from action counts while preserving contributions, all-in pot eligibility and original seat identity.
 - A big-blind option bet is shown as a raise, with the total street amount separated from the additional payment.
 - Practice mode updates its instruction after a choice is submitted.

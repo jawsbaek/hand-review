@@ -71,6 +71,9 @@ def solve_node(
     out["ev"] = dict(zip(out["actions"], out["evs"], strict=True))
     out["pot"] /= SCALE
     out["exploitability"] /= SCALE
+    for amount in out.get("amounts", []):
+        amount["to"] /= SCALE
+        amount["paid"] /= SCALE
     return out
 
 

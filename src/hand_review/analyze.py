@@ -385,6 +385,14 @@ def main():
     r.add_argument("--output", "-o", type=Path, default=Path("reports/replay.html"))
     r.add_argument("--oop-range", help="선택적 헤즈업 턴·리버 EV 분석용 OOP 레인지")
     r.add_argument("--ip-range", help="선택적 헤즈업 턴·리버 EV 분석용 IP 레인지")
+    s = sub.add_parser("serve", help="로컬 복기 화면과 레인지 재계산 기능 실행")
+    s.add_argument("path", type=Path)
+    s.add_argument("--port", type=int, default=8765)
+    for command in (r, s):
+        command.add_argument("--analysis-samples", type=int, default=128, help="모델 시뮬레이션 수 (16~4096)")
+        command.add_argument("--no-solver", action="store_true", help="모델 추정만 계산")
+        command.add_argument("--solver-timeout", type=float, default=12, help="솔버 1회 시간 상한(초)")
+        command.add_argument("--no-node-locks", action="store_true", help="솔버 가정별 재계산 생략")
     i = sub.add_parser("icm")
     i.add_argument("--stacks", type=float, nargs="+", required=True)
     i.add_argument("--payouts", type=float, nargs="+", required=True)
@@ -402,7 +410,24 @@ def main():
         if p is not None and not p.exists():
             ap.error(f"경로 없음: {p}")
 
-    if a.cmd in {"hands", "replay"}:
+    if a.cmd in {"hands", "replay", "serve"}:
+        options = None
+        if a.cmd in {"replay", "serve"}:
+            from hand_review.recommendations import AnalysisOptions
+
+            if not 16 <= a.analysis_samples <= 4096 or not 0 < a.solver_timeout <= 120:
+                ap.error("분석 샘플은 16~4096, 솔버 시간 상한은 0초 초과 120초 이하여야 합니다.")
+            options = AnalysisOptions(a.analysis_samples, not a.no_solver, a.solver_timeout, not a.no_node_locks)
+        if a.cmd == "serve":
+            from hand_review.workbench import serve
+
+            if not 0 <= a.port <= 65535:
+                ap.error("포트는 0~65535여야 합니다.")
+            try:
+                serve(a.path, options, a.port)
+            except (OSError, ValueError) as error:
+                ap.error(str(error))
+            return
         ev_ranges = None
         if a.oop_range or a.ip_range:
             if not (a.oop_range and a.ip_range):
@@ -417,7 +442,7 @@ def main():
             from hand_review.replay import write_report
 
             try:
-                report = write_report(a.path, a.output, ev_ranges)
+                report = write_report(a.path, a.output, ev_ranges, options, a.output.parent / ".hand-review-cache")
             except (OSError, ValueError) as e:
                 ap.error(str(e))
             print(f"복기 {len(report['hands'])}핸드 · 중복 {report['duplicates']} · 건너뜀 {len(report['errors'])}")

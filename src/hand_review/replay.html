@@ -624,6 +624,45 @@
         line-height: 1.75;
         margin: 10px 0;
       }
+      .analysis-section {
+        margin: 20px 0;
+        padding-top: 15px;
+        border-top: 1px solid var(--line);
+      }
+      .analysis-section h4 {
+        margin: 0 0 9px;
+        font-size: 14px;
+      }
+      .comparison-line {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .comparison-line strong {
+        display: block;
+        font-size: 16px;
+        margin: 4px 0;
+        overflow-wrap: anywhere;
+        font-variant-numeric: tabular-nums;
+      }
+      .comparison-line .training-note { margin: 4px 0; }
+      .analysis-details { margin-top: 15px; }
+      .analysis-details summary { min-height: 36px; font-weight: 600; }
+      .analysis-details select { width: 100%; margin: 7px 0; }
+      .analysis-details p { overflow-wrap: anywhere; }
+      .analysis-table-wrap { max-height: 330px; overflow: auto; }
+      .analysis-table-wrap th { position: sticky; top: 0; background: #f8faf9; }
+      .analysis-table-wrap td { overflow-wrap: anywhere; }
+      .range-row { display: block; font-size: 12px; margin: 12px 0; }
+      .range-row textarea {
+        display: block; width: 100%; max-width: 100%; min-height: 68px;
+        resize: vertical; margin-top: 5px; padding: 7px 9px;
+        border: 1px solid var(--line); border-radius: 6px;
+        font: inherit; color: var(--ink); background: var(--paper);
+      }
+      .range-row textarea:focus-visible { outline: 3px solid #b9811e; outline-offset: 3px; }
+      .range-row textarea::selection { color: #fff; background: var(--green); }
+      .analysis-status { min-height: 24px; }
+      .analysis-details code { overflow-wrap: anywhere; white-space: normal; }
       .recommendation {
         padding-top: 10px;
         border-top: 1px solid var(--line);
@@ -1612,11 +1651,11 @@
         );
         root.append(
           head,
-          el("h3", "", r.title),
+          el("h3", "", d.analysis ? "내 선택과 추천" : r.title),
           el(
             "span",
             "basis",
-            r.basis === "solver"
+            d.analysis ? "기존 후보 분류 · " + r.title : r.basis === "solver"
               ? "솔버 EV · 명시한 레인지 가정"
               : r.basis === "heuristic"
                 ? "휴리스틱 · 최적해 미확정"
@@ -1631,8 +1670,9 @@
             (answer ? "내 선택: " + answer + " · " : "") + "기록: " + actual,
           ),
           spot,
-          el("p", "decision-copy", r.reason),
         );
+        renderAnalysis(root, d);
+        root.append(el("p", "decision-copy", r.reason));
         if (r.evs) {
           const table = el("table", "ev-table"),
             thead = el("thead"),
@@ -1675,6 +1715,195 @@
           };
           root.append(b);
         }
+      }
+      const rangeDrafts = new Map(), rangeStates = new Map(), analysisRevisions = new Map(), scenarioSelection = new Map();
+      function rangeState(d,key) {
+        if(!rangeStates.has(key)) rangeStates.set(key,{
+          applied:{...(d.analysis.model?.ranges||d.analysis.initial_ranges||{})},
+          submitted:null,pending:false,error:"",message:"",open:false,
+        });
+        return rangeStates.get(key);
+      }
+      function sameRanges(a,b) {
+        return JSON.stringify(Object.entries(a).sort())===JSON.stringify(Object.entries(b).sort());
+      }
+      function updateRangeStatus(d,key) {
+        const state=rangeState(d,key), draft=rangeDrafts.get(key)||state.applied;
+        const stale=document.getElementById("range-stale"), status=document.getElementById("analysis-status");
+        if(stale) {
+          stale.hidden=sameRanges(draft,state.applied)&&(!state.pending||!state.submitted||sameRanges(state.submitted,state.applied));
+          stale.textContent=d.analysis.status==="ready"
+            ? "수정 전 레인지의 결과입니다. 현재 입력의 재계산이 완료되면 결과가 바뀝니다."
+            : "입력 레인지가 바뀌었습니다. 현재 입력으로 다시 계산하세요.";
+        }
+        if(status) status.textContent=state.error||(state.pending?"레인지와 사이징을 계산하고 있습니다…":state.message);
+        const button=document.getElementById("range-submit");
+        if(button) button.disabled=state.pending;
+      }
+      function refreshAnalysis(d,hi,key,submitted) {
+        if(selected!==hi || currentDecision()!==d || (practice&&!answered.has(key))) return;
+        const active=document.activeElement;
+        const editSeat=active?.matches("textarea[data-seat]") ? active.dataset.seat : null;
+        const selection=editSeat ? [active.selectionStart,active.selectionEnd] : null;
+        const state=rangeState(d,key);
+        state.open=state.open||submitted||!!document.getElementById("range-details")?.open;
+        renderDecision();
+        if(editSeat) {
+          const editor=document.querySelector('textarea[data-seat="'+editSeat+'"]');
+          editor?.focus({preventScroll:true});editor?.setSelectionRange(...selection);
+        } else if(submitted) document.getElementById("range-submit")?.focus({preventScroll:true});
+      }
+      function sizedAction(a) {
+        const label = {FOLD:"폴드",CHECK:"체크",CALL:"콜",BET:"벳",RAISE:"레이즈"}[a.kind] || a.kind;
+        if (a.kind === "CHECK" || a.kind === "FOLD") return label;
+        const money = (n) => amount(n * hand().bb);
+        return label + " " + money(a.kind === "RAISE" ? a.to_bb : a.paid_bb) +
+          (a.kind === "RAISE" && Math.abs(a.to_bb-a.paid_bb)>0.001 ? " (추가 " + money(a.paid_bb) + ")" : "");
+      }
+      function analysisTable(parent, data, title) {
+        parent.append(el("h4", "", title));
+        const wrap = el("div", "analysis-table-wrap"), table = el("table", "ev-table");
+        table.setAttribute("aria-label", title);
+        const head = el("thead"), hr=el("tr");
+        for (const text of ["액션·사이징", "빈도", "EV (BB)"]) hr.append(el("th", "", text));
+        head.append(hr); table.append(head);
+        const body = el("tbody");
+        for (const a of data.actions || []) {
+          const selected = data.recommendation && a.kind===data.recommendation.kind && Math.abs(a.to_bb-data.recommendation.to_bb)<0.001;
+          const tr = el("tr", selected ? "chosen" : "");
+          tr.append(el("td", "", sizedAction(a)+(selected ? " · 추천" : "")),
+            el("td", "number", a.frequency===null ? "—" : (a.frequency*100).toFixed(1)+"%"),
+            el("td", "number", a.ev_bb.toFixed(2)+(a.se_bb===null ? "" : " ±"+(2*a.se_bb).toFixed(2))));
+          body.append(tr);
+        }
+        table.append(body); wrap.append(table); parent.append(wrap);
+      }
+      async function requestAnalysis(d, ranges, submitted=false, hi=selected) {
+        const token = report.analysis?.live_token;
+        if (!token) return;
+        const target=report.hands[hi], di=target.decisions.indexOf(d), key=target.id+":"+d.action_frame;
+        const revision=(analysisRevisions.get(key)||0)+1;
+        analysisRevisions.set(key,revision);
+        const state=rangeState(d,key);
+        const submittedRanges={...state.applied,...ranges};
+        Object.assign(state,{submitted:submittedRanges,pending:true,error:"",message:"",open:state.open||submitted});
+        if(selected===hi&&currentDecision()===d) updateRangeStatus(d,key);
+        try {
+          const headers={"Content-Type":"application/json","X-Review-Token":token};
+          const response=await fetch("/api/analyze",{method:"POST",headers,body:JSON.stringify({hand:hi,decision:di,ranges:submittedRanges})});
+          const accepted=await response.json();
+          if(!response.ok) throw new Error(accepted.error||"분석 요청에 실패했습니다.");
+          let result;
+          do {
+            await new Promise(resolve=>setTimeout(resolve,700));
+            const poll=await fetch("/api/jobs/"+accepted.job,{headers:{"X-Review-Token":token}});
+            result=await poll.json();
+            if(!poll.ok) throw new Error(result.error||"분석 상태를 확인하지 못했습니다.");
+          } while(result.status==="running");
+          if(analysisRevisions.get(key)!==revision) return;
+          if(result.status!=="complete") throw new Error(result.note||"분석을 완료하지 못했습니다.");
+          d.analysis=result.analysis;
+          Object.assign(state,{applied:{...submittedRanges,...d.analysis.model?.ranges},pending:false,
+            message:d.analysis.status==="ready"?"재계산을 완료했습니다.":"이 레인지의 추천을 보류했습니다. 입력 가정을 확인하세요."});
+          scenarioSelection.delete(key);
+          refreshAnalysis(d,hi,key,submitted);
+        } catch(error) {
+          if(analysisRevisions.get(key)!==revision) return;
+          Object.assign(state,{pending:false,error:error.message});
+          refreshAnalysis(d,hi,key,submitted);
+        }
+      }
+      function renderAnalysis(root,d) {
+        if(!d.analysis) return;
+        const a=d.analysis, key=answerKey(d), state=rangeState(d,key), section=el("section","analysis-section");
+        section.id="action-comparison";
+        section.setAttribute("aria-label","액션과 사이징 비교");
+        section.append(el("h4","","액션·사이징 비교"));
+        const stale=el("p","training-note");stale.id="range-stale";stale.hidden=true;section.append(stale);
+        const status=el("p","training-note analysis-status");
+        status.id="analysis-status"; status.setAttribute("role","status");
+        if(a.status==="ready" && a.coaching?.recommendation && a.model?.status==="ready" && a.solver) {
+          const solver=el("div","comparison-line"), coach=el("div","comparison-line");
+          solver.dataset.method="solver";
+          solver.append(el("span","","솔버 계산"));
+          if(a.solver.status==="ready") {
+            solver.append(el("strong","",sizedAction(a.solver.recommendation)),
+              el("p","training-note","빈도 "+(a.solver.recommendation.frequency*100).toFixed(1)+"% · EV "+a.solver.recommendation.ev_bb.toFixed(2)+" BB"));
+          } else solver.append(el("p","training-note",a.solver.note));
+          coach.dataset.method=a.coaching.basis;
+          coach.append(el("span","","실전 코칭 · "+(a.coaching.basis==="solver_baseline"?"솔버 기본 전략":"모델 추정")),
+            el("strong","",sizedAction(a.coaching.recommendation)),
+            el("p","training-note",a.coaching.note));
+          if(a.coaching.recommendation.pot_pct!==null && ["BET","RAISE"].includes(a.coaching.recommendation.kind))
+            coach.append(el("p","training-note","추가 지불액 / 현재 팟 "+a.coaching.recommendation.pot_pct.toFixed(1)+"%"));
+          if(a.coaching.basis==="model_baseline") coach.append(
+            el("p","training-note",a.model.selection),
+            el("p","training-note","계산 범위: 현재 베팅 라운드와 상대 재공격 최대 1회, 이후 체크다운. 레이크 0 가정이며 이후 스트리트 베팅은 최적화하지 않습니다."));
+          section.append(solver,coach);
+          const experiment=el("details","analysis-details");
+          experiment.append(el("summary","","상대 응답을 가정해 비교"));
+          const choose=el("select"); choose.id="coaching-scenario"; choose.setAttribute("aria-label","상대 응답 가정");
+          for(const [value,label] of [["baseline","기본 응답 가정"],["overfold","폴드 확률 +15%p 가정"],["sticky","폴드 확률 −15%p 가정"]]) {
+            const option=el("option","",label); option.value=value; choose.append(option);
+          }
+          choose.value=scenarioSelection.get(key)||"baseline";
+          const scene=el("div"); scene.id="scenario-result";
+          const showScenario=()=>{
+            scene.replaceChildren();
+            const native=choose.value==="baseline"&&a.solver.status==="ready" ? a.solver : a.solver.scenarios?.find(s=>s.id===choose.value&&s.status==="ready");
+            const model=a.model.scenarios.find(s=>s.id===choose.value);
+            const chosen=native||model;
+            scene.append(el("p","training-note",native?(choose.value==="baseline"?"솔버 · 기본 균형":"솔버 노드 락킹 · 현재 스트리트의 상대 첫 응답"):"모델 추정 · 현재 스트리트 응답 후 체크다운"),
+              el("p","decision-copy",sizedAction(chosen.recommendation)),
+              el("p","training-note",native?"계산한 빈도를 기준으로 한 대표 액션입니다.":"이 가정 하나에서 최대 추정 EV를 보인 액션입니다. 기본 코칭은 가정 변화와 오차도 고려합니다."),
+              el("p","training-note","가정 실험입니다. 관측으로 확인한 상대 성향이 아닙니다."));
+            analysisTable(scene,chosen,"가정별 후보 비교");
+          };
+          choose.onchange=()=>{scenarioSelection.set(key,choose.value);showScenario();};
+          experiment.append(choose,scene);showScenario();section.append(experiment);
+          const details=el("details","analysis-details");
+          details.append(el("summary","","사이징별 빈도·EV·계산 가정"));
+          if(a.solver.status==="ready") {
+            analysisTable(details,a.solver,"솔버 후보");
+            details.append(el("p","training-note",a.solver.note),el("p","training-note",a.solver.scenario_note));
+          }
+          analysisTable(details,a.model,"모델 후보 · 빈도 산출 없음");
+          details.append(el("p","training-note",a.model.samples+"회 시뮬레이션 · ±값은 샘플링 표준오차의 두 배입니다. 모델이 틀릴 위험을 포함하지 않습니다."));
+          for(const text of a.model.assumptions) details.append(el("p","training-note",text));
+          for(const p of a.evidence) details.append(el("p","training-note",(a.range_labels.find(x=>x.seat===p.seat)?.position||"좌석 "+p.seat)+": 이전 "+p.hands+"핸드 · 베팅 대응 "+p.facing_bet+"회. 개인별 자동 보정 보류."));
+          section.append(details);
+        } else {
+          section.append(el("p","decision-copy",a.note||"장면을 분석해 액션과 사이징을 비교합니다."));
+        }
+        const rangeDetails=el("details","analysis-details");
+        rangeDetails.id="range-details";rangeDetails.open=state.open;
+        rangeDetails.ontoggle=()=>{if(rangeDetails.isConnected) state.open=rangeDetails.open;};
+        rangeDetails.append(el("summary","","레인지 확인·수정"));
+        const ranges=rangeDrafts.get(key)||state.applied;
+        const form=el("form"), editors=[];
+        for(const [seat,text] of Object.entries(ranges)) {
+          const p=hand().frames[d.frame].players.find(p=>String(p.seat)===seat);
+          const row=el("label","range-row",(Number(seat)===hand().hero.seat?"나 · ":"")+(p?.position||"좌석 "+seat));
+          const input=el("textarea");input.value=text;input.rows=3;input.dataset.seat=seat;
+          input.readOnly=!report.analysis?.live_token;
+          input.oninput=()=>{rangeDrafts.set(key,Object.fromEntries(editors.map(n=>[n.dataset.seat,n.value])));updateRangeStatus(d,key);};
+          row.append(input);form.append(row);editors.push(input);
+        }
+        form.append(el("p","training-note","스트리트 시작 레인지입니다. 기본값은 모델 사전 가정이며 내 카드와 결정 이전 액션만 사용합니다. 형식: AA,TT+,AKs,AJo:0.5 또는 random"));
+        if(report.analysis?.live_token && Object.keys(ranges).length) {
+          const submit=el("button","primary","이 레인지로 다시 계산");submit.type="submit";submit.id="range-submit";form.append(submit);
+          const hi=selected;
+          form.onsubmit=event=>{event.preventDefault();requestAnalysis(d,Object.fromEntries(editors.map(n=>[n.dataset.seat,n.value])),true,hi);};
+        } else if(!report.analysis?.live_token) {
+          form.append(el("p","training-note","파일에서는 저장된 분석과 가정별 결과를 볼 수 있습니다. 레인지 재계산은 터미널에서 로컬 분석 화면을 실행하세요."),
+            el("code","","hand-review serve <내 JSONL 경로>"));
+        }
+        rangeDetails.append(form);section.append(rangeDetails,status);root.append(section);
+        if(a.status==="pending" && !state.error && !state.pending && report.analysis?.live_token) {
+          const hi=selected;state.pending=true;
+          queueMicrotask(()=>requestAnalysis(d,rangeDrafts.get(key)||{},false,hi));
+        }
+        updateRangeStatus(d,key);
       }
       function render() {
         const h = hand(),
@@ -1794,7 +2023,7 @@
         render();
       };
       document.addEventListener("keydown", (e) => {
-        if (e.target.closest("input,select,button,summary,a")) return;
+        if (e.target.closest("input,textarea,select,button,summary,a")) return;
         if (e.code === "Space") {
           e.preventDefault();
           play();
@@ -1816,7 +2045,9 @@
         (report.grades.blunder || 0) +
         " · 베스트 후보 " +
         (report.grades.best || 0);
-      $("solver-method").textContent = report.ranges
+      $("solver-method").textContent = report.analysis
+        ? "액션·사이징 비교는 솔버 계산과 모델 추정을 분리합니다. 솔버는 지원되는 헤즈업 포스트플랍의 후보 트리를 풉니다. 실전 코칭은 개인별 표본이 부족하면 기본 추천을 유지하며, 가정 실험으로 다른 응답을 비교합니다. 기존 블런더·베스트 필터는 휴리스틱 후보입니다."
+        : report.ranges
         ? "솔버: 고정 OOP " +
           report.ranges.oop +
           " / IP " +

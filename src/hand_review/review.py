@@ -220,8 +220,18 @@ def review_hand(hand, ranges=None):
             "stack": context["stack"],
             "pot": pot,
             "active": context["active"],
-            "can_raise": context["stack"] is not None and context["stack"] > context["to_call"],
+            "can_raise": context["stack"] is not None
+            and context["stack"] > context["to_call"]
+            and context.get("raise_reopened", True)
+            and (
+                not context.get("players")
+                or any(p["seat"] != context["hero_seat"] and _live_stack(p) for p in context["players"])
+            ),
             "pot_odds": call / (pot + call) if pot and call else None,
         }
         del d["context"]  # The browser needs observations and reviews, not solver inputs per snapshot.
     return hand
+
+
+def _live_stack(player):
+    return not player["folded"] and not player["departed"] and player["stack"] is not None and player["stack"] > 0

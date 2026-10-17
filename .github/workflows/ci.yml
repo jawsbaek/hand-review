@@ -31,5 +31,8 @@ jobs:
       - run: uv sync --locked
       - run: npm install --no-save --no-package-lock playwright@1.58.1
       - run: npx playwright install --with-deps chromium
-      - run: uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html
+      - run: cargo build --release --locked --manifest-path ev_rust/Cargo.toml
+      - run: uv run pytest tests/test_coaching.py tests/test_workbench.py
+      - run: uv run hand-review replay samples/pokerist/demo.jsonl -o reports/demo.html --analysis-samples 32
       - run: node scripts/verify_replay.mjs
+      - run: HAND_REVIEW_PYTHON=$(uv run python -c 'import sys; print(sys.executable)') node scripts/verify_coaching.mjs

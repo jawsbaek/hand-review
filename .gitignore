@@ -20,5 +20,6 @@ target/
 *.jsonl
 !samples/pokerist/demo.jsonl
 reports/
+.hand-review-cache/
 .impeccable/
 node_modules/

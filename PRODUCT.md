@@ -16,7 +16,7 @@ The player reviewing their own captured Pokerist hands after a session. The inte
 
 ## Product Purpose
 
-Replay captured hands like a game and distinguish questionable decisions from good decisions, with the evidence available at the time of each action.
+Replay captured hands like a game and compare the player's recorded action/sizing with solver candidates and practical coaching recommendations using the evidence available at the time of each decision. Show a representative recommendation first, with frequencies, EVs, assumptions and range editing in the details.
 
 ## Operating Context
 
@@ -29,7 +29,10 @@ Input is a local Pokerist JSONL export. Open a generated report in a browser, st
 - Suit 4 has an unknown glyph: preserve `/s4` rather than claiming it is a spade.
 - Stack-boundary net may include top-ups. Pot contribution events are not payout records.
 - Do not infer decision quality from the result or from future board/opponent cards.
-- Solver EV is optional and limited to supported heads-up turn/river states with explicit ranges. Clearly distinguish heuristic review candidates and unavailable analysis.
+- Solver EV is optional and limited to supported heads-up postflop states and a finite sizing tree. Default ranges are visible, editable modelling priors; explicit overrides remain available.
+- Cover preflop and multiway decisions with separately labelled response/checkdown model estimates; disclose missing information and withhold unsupported recommendations.
+- Practical coaching retains a baseline when personal evidence is inadequate. Hypothetical opponent-response scenarios must be labelled as assumptions, never measured professional or individual behavior.
+- Saved reports work offline; an optional loopback-only workbench recalculates edited ranges without external services.
 
 ## Evidence on Hand
 

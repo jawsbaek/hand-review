@@ -5,7 +5,8 @@ use std::io::Read;
 use std::time::Instant;
 
 fn s<'a>(v: &'a Value, k: &str) -> &'a str {
-    v[k].as_str().unwrap_or_else(|| panic!("missing string field {k}"))
+    v[k].as_str()
+        .unwrap_or_else(|| panic!("missing string field {k}"))
 }
 
 /// 액션 이름: 베팅/레이즈는 "현재 팟 대비 %"로 표기 (공통 인터페이스 "BET 50" 형식)
@@ -114,11 +115,54 @@ fn main() {
         .expect("hero_combo not in hero range (or blocked by board)");
     let n = game.private_cards(player).len();
     let (mem, _) = game.memory_usage();
-    eprintln!("tree memory estimate: {:.2} GiB", mem as f64 / (1u64 << 30) as f64);
+    eprintln!(
+        "tree memory estimate: {:.2} GiB",
+        mem as f64 / (1u64 << 30) as f64
+    );
     if let Some(max_gib) = q["max_mem_gib"].as_f64() {
-        assert!(mem as f64 <= max_gib * (1u64 << 30) as f64, "tree too large: {mem} bytes");
+        assert!(
+            mem as f64 <= max_gib * (1u64 << 30) as f64,
+            "tree too large: {mem} bytes"
+        );
     }
     game.allocate_memory(q["compress"].as_bool().unwrap_or(false));
+    // Optional explicit node locks. These constrain a model of the opponent;
+    // exploitability below measures convergence in this constrained game only.
+    if let Some(locks) = q["locks"].as_array() {
+        assert!(locks.len() <= 128, "too many locks");
+        for lock in locks {
+            let history: Vec<usize> = lock["history"]
+                .as_array()
+                .expect("lock history")
+                .iter()
+                .map(|v| v.as_u64().expect("history index") as usize)
+                .collect();
+            game.apply_history(&history);
+            assert!(
+                !game.is_terminal_node() && !game.is_chance_node(),
+                "invalid lock node"
+            );
+            let strategy: Vec<f32> = lock["strategy"]
+                .as_array()
+                .expect("lock strategy")
+                .iter()
+                .map(|v| {
+                    let p = v.as_f64().expect("strategy probability");
+                    assert!(
+                        p.is_finite() && (0.0..=1.0).contains(&p),
+                        "invalid probability"
+                    );
+                    p as f32
+                })
+                .collect();
+            assert_eq!(
+                strategy.len(),
+                game.available_actions().len() * game.private_cards(game.current_player()).len()
+            );
+            game.lock_current_strategy(&strategy);
+        }
+        game.back_to_root();
+    }
     let max_iter = q["max_iter"].as_u64().unwrap_or(1000) as u32;
     let target = game.tree_config().starting_pot as f32
         * q["target_expl_pct"].as_f64().unwrap_or(0.1) as f32
@@ -127,15 +171,28 @@ fn main() {
     let solve_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
     // 액션 경로 따라 이동: 액션 이름, 찬스 노드에서는 카드 문자열 ("Qc")
+    let mut street_bets = [0i32; 2];
     for step in q["path"].as_array().map(|v| v.as_slice()).unwrap_or(&[]) {
         let step = step.as_str().unwrap();
         if game.is_chance_node() {
             game.play(card_from_str(step).unwrap() as usize);
+            street_bets = [0; 2];
             continue;
         }
         let pot = pot_now(&game);
-        let names: Vec<String> = game.available_actions().iter().map(|a| name(a, pot)).collect();
-        let idx = nearest(&names, step).unwrap_or_else(|| panic!("action {step} not available in {names:?}"));
+        let names: Vec<String> = game
+            .available_actions()
+            .iter()
+            .map(|a| name(a, pot))
+            .collect();
+        let idx = nearest(&names, step)
+            .unwrap_or_else(|| panic!("action {step} not available in {names:?}"));
+        let actor = game.current_player();
+        match game.available_actions()[idx] {
+            Action::Bet(x) | Action::Raise(x) | Action::AllIn(x) => street_bets[actor] = x,
+            Action::Call => street_bets[actor] = street_bets[actor ^ 1],
+            _ => (),
+        }
         game.play(idx);
     }
     assert!(
@@ -143,16 +200,65 @@ fn main() {
         "path must end at a decision node"
     );
 
-    assert_eq!(game.current_player(), player, "hero is not the actor at this node");
+    assert_eq!(
+        game.current_player(),
+        player,
+        "hero is not the actor at this node"
+    );
     game.cache_normalized_weights();
     let pot = pot_now(&game);
     let actions = game.available_actions();
     let evd = game.expected_values_detail(player);
     let strat = game.strategy();
+    let amounts: Vec<Value> = actions
+        .iter()
+        .map(|a| {
+            let (kind, to) = match *a {
+                Action::Bet(x) => ("BET", x),
+                Action::Raise(x) => ("RAISE", x),
+                Action::AllIn(x) => (
+                    if street_bets[player ^ 1] > 0 {
+                        "RAISE"
+                    } else {
+                        "BET"
+                    },
+                    x,
+                ),
+                Action::Call => ("CALL", street_bets[player ^ 1]),
+                Action::Check => ("CHECK", street_bets[player]),
+                Action::Fold => ("FOLD", street_bets[player]),
+                _ => ("UNKNOWN", street_bets[player]),
+            };
+            json!({"kind": kind, "to": to, "paid": (to - street_bets[player]).max(0)})
+        })
+        .collect();
+    let action_names: Vec<String> = actions.iter().map(|a| name(a, pot)).collect();
+    let evs: Vec<f32> = (0..actions.len()).map(|j| evd[i + j * n]).collect();
+    let strategy: Vec<f32> = (0..actions.len()).map(|j| strat[i + j * n]).collect();
+    let mut responses = Vec::new();
+    if q["include_responses"].as_bool().unwrap_or(false) {
+        let history = game.history().to_vec();
+        for index in 0..action_names.len() {
+            game.apply_history(&history);
+            game.play(index);
+            if game.is_terminal_node() || game.is_chance_node() || game.current_player() == player {
+                continue;
+            }
+            responses.push(json!({
+                "history": game.history(),
+                "actions": game.available_actions().iter().map(|a| name(a, pot_now(&game))).collect::<Vec<_>>(),
+                "strategy": game.strategy(),
+            }));
+        }
+        game.apply_history(&history);
+    }
     let out = json!({
-        "actions": actions.iter().map(|a| name(a, pot)).collect::<Vec<_>>(),
-        "evs": (0..actions.len()).map(|j| evd[i + j * n]).collect::<Vec<_>>(),
-        "strategy": (0..actions.len()).map(|j| strat[i + j * n]).collect::<Vec<_>>(),
+        "actions": action_names,
+        "evs": evs,
+        "strategy": strategy,
+        "amounts": amounts,
+        "responses": responses,
+        "constrained": q["locks"].as_array().is_some_and(|locks| !locks.is_empty()),
         "pot": pot,
         "exploitability": expl,
         "solve_ms": solve_ms,

@@ -65,7 +65,7 @@ hand-review tui --hands samples/cash --mtt samples/mtt/tournaments.csv --stacks 
 |---|---|
 | `.phh` / `.phhs` | [Poker Hand History](https://phh.readthedocs.io/) files. Include `players` so stats group by name, not seat. |
 | PokerStars `.txt` | No-limit Hold'em cash and tournaments. Rake and antes are applied. |
-| Pokerist `.jsonl` | `replay` command only. Observation exports with `kind: pokerist-hand`, `hero`, `board`, and protocol `actions`. |
+| Pokerist `.jsonl` | `replay` / `serve`. Observation exports with `kind: pokerist-hand`, `hero`, `board`, and protocol `actions`. |
 | MTT CSV | Header `date,name,buyin,prize`. See `samples/mtt/tournaments.csv`. |
 
 ### Pokerist browser replay
@@ -86,9 +86,9 @@ Keep real exports and generated reports local; both are gitignored (only the syn
 - Table departures retain their recorded contributions. Departed players leave the action count, while departed all-in players remain eligible for pots. A new occupant does not replace the previous hand participant.
 - Raises display the total street amount and, when different, the extra payment separately (for example, raise to 3 BB, adding 2 BB from the big blind).
 
-Without explicit solver ranges, classifications are conservative **heuristic candidates**, not GTO verdicts or invented EVs. Unsupported decisions remain unscored. The report describes each rule and its limits. Net is the exported stack-boundary difference and may include top-ups; pot collection events are never treated as payouts. Missing starts, contradictory payments, incomplete records and mixed hand boundaries are flagged. Suit 4 retains its original `/s4` display; its internal `s` solver token is only a consistent suit mapping.
+Each decision now compares the recorded action and sizing with **solver candidates** and a separate **practical coaching recommendation**. Amounts distinguish raise-to totals, extra payments and payment/current-pot percentages. Details include candidate EVs, calculated solver frequencies, model sampling errors and editable range assumptions. The existing blunder/best filters remain heuristic candidates, separate from these numerical comparisons.
 
-Optional real EV comparisons reuse the v0.3.0 engine with explicit, fixed OOP/IP ranges:
+Build the optional solver for heads-up postflop equilibrium comparisons and node-lock scenarios:
 
 ```sh
 cargo build --release --manifest-path ev_rust/Cargo.toml
@@ -96,8 +96,22 @@ uv run hand-review replay samples/pokerist/demo.jsonl -o reports/ev-demo.html \
   --oop-range "KK,77,22,54s,65s" --ip-range "QQ,JJ"
 ```
 
-These example ranges describe the synthetic heads-up sample, not your opponents.
-Only complete heads-up turn/river states are scored. Flop and multiway decisions retain their heuristic/unscored status. Unsupported paths, timeouts (45 seconds per replay solve), memory limits (1 GiB) and insufficient convergence are disclosed without assigning solver grades. Off-tree sizes use the nearest matching solver action. The replay labels a solver loss of at least 2 BB a blunder candidate; losses within the larger of 0.1 BB or twice the reported exploitability are best candidates; other scored decisions are marked for review.
+The example ranges describe the synthetic sample. Without overrides, ranges are versioned, visible **model priors, not solved preflop charts or measured opponent ranges**. The solver supports structurally complete heads-up flop/turn/river states, searches a finite bet/raise grid with bounded bet refinement, and preserves mixed frequencies. Incomplete paths, changed pot amounts, 1 GiB memory limits, timeouts (12 seconds per solve by default) and insufficient convergence withhold the solver result. These limits do not turn a model estimate into a solver result.
+
+Preflop and multiway coaching uses a reproducible Monte Carlo response model: simulate the rest of the current betting round, allow at most one opponent counter-raise, then check down sampled runouts. It handles dead contributions, all-in side pots, ties and unmatched returns. It assumes zero rake, approximate response policies, and no inference from unknown folded cards. **It does not optimize future-street betting or establish a full-hand optimal strategy.** Default coaching compares conservative estimates across three response assumptions; detail rows show sampling error separately from model uncertainty. Increase precision with `--analysis-samples 512`, or use `--no-solver` for model-only reports.
+
+Opponent evidence uses partner/player IDs and only trustworthy completed hands ending before the reviewed hand. Broad aggregate observations cannot identify combo/board/size-specific strategy. Personal automatic exploitation is therefore withheld; the report retains the baseline and offers explicit fold-response ±15 percentage-point experiments. On supported solver states these experiments lock first opponent response nodes on the current board and resolve; other states use model scenarios. Locked-game convergence is not a loss bound against an unrestricted opponent. See [node locking](https://piosolver.com/docs/viewer/node_locking/) and [confidence-aware opponent exploitation](https://proceedings.mlr.press/v5/johanson09a.html) for the methodological background; those sources do not validate this implementation.
+
+To edit ranges and recompute in the browser:
+
+```sh
+uv run hand-review serve samples/pokerist/demo.jsonl --port 8765
+# Open http://127.0.0.1:8765/ ; Ctrl+C stops the local process.
+```
+
+The workbench binds only to loopback, checks Host/Origin and a per-session token, limits its queue, and caches calculations privately in `.hand-review-cache`. It sends no data to external services. The offline HTML still displays saved results and scenarios; live range recomputation requires the local workbench. Invalid input preserves the last valid result and is recoverable in the editor.
+
+Net is the exported stack-boundary difference and may include top-ups; pot collection events are never treated as payouts. Missing starts, contradictory payments, incomplete records and mixed boundaries are flagged. Suit 4 keeps its literal `/s4` label; the internal `s` token is only a consistent suit mapping. Outcomes, future board/opponent cards and the recorded hero choice do not enter recommendation candidate construction.
 
 ### Solver (optional)
 
